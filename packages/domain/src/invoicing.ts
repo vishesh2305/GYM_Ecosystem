@@ -23,3 +23,12 @@ export function splitGst(gstPaise: number): { cgstPaise: number; sgstPaise: numb
   const [cgstPaise = 0, sgstPaise = 0] = allocate(gstPaise, [1, 1]);
   return { cgstPaise, sgstPaise };
 }
+
+/** Invoice status after payments: nothing paid → issued, some → partially_paid, all → paid. */
+export function paymentStatus(
+  totalPaise: number,
+  paidPaise: number,
+): "issued" | "partially_paid" | "paid" {
+  if (paidPaise <= 0) return "issued";
+  return paidPaise >= totalPaise ? "paid" : "partially_paid";
+}

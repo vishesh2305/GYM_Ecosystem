@@ -59,3 +59,42 @@ export const getMemberBalance = defineRoute({
   params: memberParams,
   response: z.object({ balancePaise: z.number().int() }),
 });
+
+export const payment = z.object({
+  id: z.uuid(),
+  invoiceId: z.uuid(),
+  method: z.enum(["cash", "upi_qr", "card_terminal", "online", "autopay"]),
+  status: z.enum(["pending", "captured", "failed"]),
+  amountPaise: z.number().int(),
+  refundedPaise: z.number().int(),
+  reference: z.string().nullable(),
+  capturedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+});
+
+const invoiceParams = z.object({ orgId: z.uuid(), invoiceId: z.uuid() });
+
+export const recordPayment = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/invoices/{invoiceId}/payments",
+  summary:
+    "Record money received at the desk (cash, UPI to the gym's QR, card machine). Needs an Idempotency-Key.",
+  tag: "billing",
+  params: invoiceParams,
+  body: z.object({
+    method: z.enum(["cash", "upi_qr", "card_terminal"]),
+    amountPaise: z.number().int().min(1).max(1_000_000_000),
+    reference: z.string().trim().max(100).optional(),
+  }),
+  response: payment,
+  status: 201,
+});
+
+export const listInvoicePayments = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/invoices/{invoiceId}/payments",
+  summary: "Payments made against an invoice",
+  tag: "billing",
+  params: invoiceParams,
+  response: z.array(payment),
+});

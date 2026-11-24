@@ -140,3 +140,42 @@ export const invoiceLines = pgTable(
   },
   (t) => [index("invoice_lines_invoice_idx").on(t.invoiceId)],
 );
+
+export const PAYMENT_METHODS = ["cash", "upi_qr", "card_terminal", "online", "autopay"] as const;
+
+/** Money received against an invoice. Online payments start as `pending` until the gateway confirms them. */
+export const payments = pgTable(
+  "payments",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id),
+    method: text("method", { enum: PAYMENT_METHODS }).notNull(),
+    status: text("status", { enum: ["pending", "captured", "failed"] }).notNull(),
+    amountPaise: integer("amount_paise").notNull(),
+    refundedPaise: integer("refunded_paise").notNull().default(0),
+    gateway: text("gateway"),
+    gatewayOrderId: text("gateway_order_id"),
+    gatewayPaymentId: text("gateway_payment_id"),
+    reference: text("reference"),
+    receivedBy: uuid("received_by"),
+    capturedAt: timestamp("captured_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("payments_invoice_idx").on(t.tenantId, t.invoiceId),
+    unique("payments_gateway_payment_unique").on(t.gatewayPaymentId),
+    unique("payments_gateway_order_unique").on(t.gatewayOrderId),
+    check(
+      "payments_amounts",
+      sql`${t.amountPaise} > 0 and ${t.refundedPaise} between 0 and ${t.amountPaise}`,
+    ),
+  ],
+);

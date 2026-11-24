@@ -37,6 +37,7 @@ const SAMPLE_BODIES: Record<string, object> = {
   freezeMembership: { days: 3 },
   changeMembershipPlan: { planId: "01930000-0000-7000-8000-0000000000ee" },
   cancelMembership: { reason: "Cancelled by intruder" },
+  recordPayment: { method: "cash", amountPaise: 100 },
   createMemberImport: {
     fileName: "x.csv",
     csv: "Name\nIntruder",
@@ -198,7 +199,7 @@ describe("cross-tenant isolation matrix", () => {
     const res = await api.inject({
       method: route.method,
       url: fill(route.path, victim),
-      headers: attackerHeaders,
+      headers: { ...attackerHeaders, "idempotency-key": `attack-${Math.random()}` },
       ...(route.body && { payload: SAMPLE_BODIES[name] }),
     });
     expect(res.statusCode, `${route.method} ${route.path}`).toBe(404);
@@ -210,7 +211,7 @@ describe("cross-tenant isolation matrix", () => {
       const res = await api.inject({
         method: route.method,
         url: fill(route.path, { ...victim, orgId: attackerOrgId }),
-        headers: attackerHeaders,
+        headers: { ...attackerHeaders, "idempotency-key": `attack-${Math.random()}` },
         ...(route.body && { payload: SAMPLE_BODIES[name] }),
       });
       expect(res.statusCode, `${route.method} ${route.path}`).toBe(404);
