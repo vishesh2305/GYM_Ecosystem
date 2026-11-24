@@ -18,7 +18,9 @@ import {
   getMemberBalance,
   listInvoicePayments,
   listMemberInvoices,
+  razorpayWebhook,
   recordPayment,
+  startOnlinePayment,
 } from "./billing";
 import { listConsents, recordConsent } from "./consents";
 import { getMe, updateMe } from "./me";
@@ -112,4 +114,6 @@ export const routes = {
   getMemberBalance,
   recordPayment,
   listInvoicePayments,
+  startOnlinePayment,
+  razorpayWebhook,
 };

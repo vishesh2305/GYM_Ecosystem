@@ -47,10 +47,11 @@ export async function createApp(env: ApiEnv, options: CreateAppOptions = {}) {
   const app = await NestFactory.create(
     AppModule.forRoot(env, redis, options.modules),
     adapter,
-    // abortOnError false: a wiring error throws (and is reported) instead of killing the process silently.
+    // abortOnError false: wiring errors throw instead of silently killing the process. rawBody: webhooks are
+    // verified against the exact bytes received.
     env.NODE_ENV === "test"
-      ? { logger: false, abortOnError: false }
-      : { bufferLogs: true, abortOnError: false },
+      ? { logger: false, abortOnError: false, rawBody: true }
+      : { bufferLogs: true, abortOnError: false, rawBody: true },
   );
 
   app.setGlobalPrefix("v1");

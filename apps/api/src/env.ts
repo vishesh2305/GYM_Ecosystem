@@ -76,6 +76,12 @@ export const apiEnvSchema = baseEnvSchema
     EMAIL_FROM: z.string().default("Gym Platform <no-reply@localhost>"),
     /** Public address of the web app; used in links sent to people (e.g. staff invites). */
     APP_URL: z.url().default("http://localhost:3001"),
+    /** "fake" creates pretend orders (development/tests); "razorpay" uses the real gateway. */
+    PAYMENT_GATEWAY: z.enum(["fake", "razorpay"]).default("fake"),
+    RAZORPAY_KEY_ID: z.string().optional(),
+    RAZORPAY_KEY_SECRET: z.string().optional(),
+    /** Secret shared with Razorpay for webhook signatures (also used by the fake gateway). */
+    RAZORPAY_WEBHOOK_SECRET: z.string().min(8).default("dev-webhook-secret"),
     /** Owners, managers and front desk must pass two-step verification before using a gym's data. */
     STAFF_MFA_REQUIRED: z.stringbool().default(true),
     /** OAuth client ids allowed as token audience (web, Android, iOS). Empty = sign-in with Google is off. */
@@ -100,6 +106,27 @@ export const apiEnvSchema = baseEnvSchema
         code: "custom",
         path: ["EMAIL_PROVIDER"],
         message: "the console sender cannot be used in production",
+      });
+    }
+    if (env.NODE_ENV === "production" && env.PAYMENT_GATEWAY === "fake") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["PAYMENT_GATEWAY"],
+        message: "the fake gateway cannot be used in production",
+      });
+    }
+    if (env.PAYMENT_GATEWAY === "razorpay" && (!env.RAZORPAY_KEY_ID || !env.RAZORPAY_KEY_SECRET)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["RAZORPAY_KEY_ID"],
+        message: "Razorpay key id and secret are required",
+      });
+    }
+    if (env.NODE_ENV === "production" && env.RAZORPAY_WEBHOOK_SECRET === "dev-webhook-secret") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["RAZORPAY_WEBHOOK_SECRET"],
+        message: "set the real webhook secret",
       });
     }
     if (env.EMAIL_PROVIDER === "smtp" && !env.SMTP_URL) {

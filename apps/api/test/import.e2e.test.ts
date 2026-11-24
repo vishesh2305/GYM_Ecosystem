@@ -98,6 +98,12 @@ describe("importing members from a spreadsheet", () => {
         })
       ).statusCode,
     ).toBe(400);
+    const broken = await g.call("POST", `${g.base}/member-imports`, {
+      fileName: "x.csv",
+      csv: 'Name\n"unclosed',
+      defaultBranchId: g.branch.id,
+    });
+    expect(broken.json().detail).toMatch(/could not be read/);
     const noName = await g.call("POST", `${g.base}/member-imports`, {
       fileName: "x.csv",
       csv: "Phone\n9000000000",

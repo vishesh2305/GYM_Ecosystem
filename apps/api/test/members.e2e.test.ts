@@ -201,6 +201,10 @@ describe("who can see and change members", () => {
     const seen = (await req("GET", `${g.base}/members`, desk.headers)).json();
     expect(seen.items.map((m: { name: string }) => m.name)).toEqual(["Main member"]);
     expect((await req("GET", `${g.base}/members/${theirs.id}`, desk.headers)).statusCode).toBe(404);
+    const filtered = (
+      await req("GET", `${g.base}/members?branchId=${other.id}`, desk.headers)
+    ).json();
+    expect(filtered).toEqual({ items: [], nextCursor: null });
     expect(
       (await req("POST", `${g.base}/members`, desk.headers, { name: "Z", homeBranchId: other.id }))
         .statusCode,

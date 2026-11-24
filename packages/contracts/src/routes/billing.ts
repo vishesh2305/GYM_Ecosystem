@@ -98,3 +98,31 @@ export const listInvoicePayments = defineRoute({
   params: invoiceParams,
   response: z.array(payment),
 });
+
+export const startOnlinePayment = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/invoices/{invoiceId}/pay-online",
+  summary:
+    "Create a payment-gateway order for what is due on an invoice (opened in the app's checkout)",
+  tag: "billing",
+  params: invoiceParams,
+  response: z.object({
+    paymentId: z.uuid(),
+    gateway: z.enum(["fake", "razorpay"]),
+    keyId: z.string(),
+    orderId: z.string(),
+    amountPaise: z.number().int(),
+    currency: z.literal("INR"),
+    notes: z.record(z.string(), z.string()),
+  }),
+  status: 201,
+});
+
+export const razorpayWebhook = defineRoute({
+  method: "POST",
+  path: "/v1/webhooks/razorpay",
+  summary: "Razorpay payment events (signature-checked; not for apps)",
+  tag: "webhooks",
+  body: z.unknown(),
+  response: z.object({ received: z.literal(true) }),
+});

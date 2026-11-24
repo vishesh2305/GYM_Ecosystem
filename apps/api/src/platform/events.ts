@@ -61,3 +61,9 @@ export async function appendEvent<S extends z.ZodType>(
     .values({ id, type: event.type, tenantId, payload: event.schema.parse(payload) });
   return id;
 }
+
+/** The tenant of a tenant-scoped event; a missing tenant is a programming error, never a silent fallback. */
+export function requireTenant(event: EventEnvelope): string {
+  if (!event.tenantId) throw new Error(`event ${event.type} ${event.id} has no tenant`);
+  return event.tenantId;
+}
