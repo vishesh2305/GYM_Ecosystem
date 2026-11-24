@@ -254,3 +254,40 @@ export const cancelMembership = defineRoute({
   body: z.object({ reason: z.string().trim().min(2).max(200) }),
   response: membership,
 });
+
+export const memberImport = z.object({
+  id: z.uuid(),
+  status: z.enum(["queued", "processing", "done", "failed"]),
+  fileName: z.string(),
+  totalRows: z.number().int(),
+  createdCount: z.number().int(),
+  failedCount: z.number().int(),
+  errors: z.array(z.object({ row: z.number().int(), message: z.string() })),
+  createdAt: z.iso.datetime(),
+  finishedAt: z.iso.datetime().nullable(),
+});
+
+export const createMemberImport = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/member-imports",
+  summary:
+    "Import existing members from CSV (columns: Name, Phone, Email, Gender, Date of birth, Branch, Plan, Start date, End date); up to 10,000 rows",
+  tag: "members",
+  params: orgParams,
+  body: z.object({
+    fileName: z.string().trim().min(1).max(200),
+    csv: z.string().min(1).max(1_000_000),
+    defaultBranchId: z.uuid(),
+  }),
+  response: memberImport,
+  status: 202,
+});
+
+export const getMemberImport = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/member-imports/{importId}",
+  summary: "Progress and row-by-row problems of an import",
+  tag: "members",
+  params: z.object({ orgId: z.uuid(), importId: z.uuid() }),
+  response: memberImport,
+});

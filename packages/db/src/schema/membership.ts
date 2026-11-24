@@ -5,6 +5,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   smallint,
   text,
@@ -155,4 +156,30 @@ export const membershipFreezes = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("membership_freezes_membership_idx").on(t.tenantId, t.membershipId)],
+);
+
+/** A spreadsheet of existing members being brought in. The file content is deleted once processed. */
+export const memberImports = pgTable(
+  "member_imports",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["queued", "processing", "done", "failed"] })
+      .notNull()
+      .default("queued"),
+    fileName: text("file_name").notNull(),
+    content: text("content"),
+    defaultBranchId: uuid("default_branch_id").notNull(),
+    totalRows: integer("total_rows").notNull(),
+    createdCount: integer("created_count").notNull().default(0),
+    failedCount: integer("failed_count").notNull().default(0),
+    /** First 500 problems: [{ row, message }], row numbers as shown in the spreadsheet. */
+    errors: jsonb("errors").$type<{ row: number; message: string }[]>().notNull().default([]),
+    createdBy: uuid("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("member_imports_tenant_idx").on(t.tenantId)],
 );

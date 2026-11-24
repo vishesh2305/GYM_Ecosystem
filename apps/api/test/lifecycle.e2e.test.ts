@@ -101,7 +101,7 @@ describe("hourly membership upkeep", () => {
   });
 
   it("is scheduled hourly by the worker", async () => {
-    const worker = await createWorker(testEnv(), { handlers: [], autostart: false });
+    const worker = await createWorker(testEnv(), { autostart: false });
     try {
       const keys = (await worker.maintenanceQueue.getJobSchedulers()).map((s) => s.key);
       expect(keys).toContain("membership-lifecycle-hourly");

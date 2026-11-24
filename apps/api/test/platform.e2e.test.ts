@@ -147,7 +147,7 @@ describe("outbox → queue → handler", () => {
 
   beforeAll(async () => {
     worker = await createWorker(testEnv({ EVENT_MAX_ATTEMPTS: "2", EVENT_BACKOFF_MS: "10" }), {
-      handlers: [pinged, doomed],
+      extraHandlers: [pinged, doomed],
       autostart: false,
     });
     await worker.queue.obliterate({ force: true });
@@ -223,7 +223,7 @@ describe("outbox → queue → handler", () => {
 
   it("an auto-started worker relays and handles events with no manual steps", async () => {
     await worker.dispatcher.pause();
-    const live = await createWorker(testEnv({ OUTBOX_POLL_MS: "20" }), { handlers: [pinged] });
+    const live = await createWorker(testEnv({ OUTBOX_POLL_MS: "20" }), { extraHandlers: [pinged] });
     try {
       const id = await ping("live");
       await vi.waitFor(() => expect(seen.some((s) => s.id === id)).toBe(true), {

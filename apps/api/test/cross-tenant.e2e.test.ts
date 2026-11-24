@@ -35,6 +35,11 @@ const SAMPLE_BODIES: Record<string, object> = {
   freezeMembership: { days: 3 },
   changeMembershipPlan: { planId: "01930000-0000-7000-8000-0000000000ee" },
   cancelMembership: { reason: "Cancelled by intruder" },
+  createMemberImport: {
+    fileName: "x.csv",
+    csv: "Name\nIntruder",
+    defaultBranchId: "01930000-0000-7000-8000-0000000000ff",
+  },
 };
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];

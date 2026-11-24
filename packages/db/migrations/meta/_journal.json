@@ -183,6 +183,20 @@
       "when": 1795550534163,
       "tag": "0025_system_role",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795550705569,
+      "tag": "0026_member_imports",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1795550705832,
+      "tag": "0027_member_imports_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -7,13 +7,15 @@ import type { EventEnvelope, EventHandler } from "../platform/events";
 import { runMembershipLifecycle } from "../membership/lifecycle";
 import { runMaintenance } from "../platform/maintenance";
 import { EVENTS_QUEUE, EventDispatcher } from "./event-dispatcher";
+import { handlers } from "./handlers";
 import { OutboxRelay } from "./outbox-relay";
 
 const MAINTENANCE_QUEUE = "maintenance";
 const HOUR = 3_600_000;
 
 export interface WorkerOptions {
-  handlers: readonly EventHandler[];
+  /** Added to every production handler (tests use this for test-only events). */
+  extraHandlers?: readonly EventHandler[];
   /** Start relaying and processing immediately (tests drive these by hand). */
   autostart?: boolean;
 }
@@ -21,7 +23,10 @@ export interface WorkerOptions {
 export type WorkerHandle = Awaited<ReturnType<typeof createWorker>>;
 
 /** Background process: outbox relay, event handlers, hourly maintenance and membership upkeep. */
-export async function createWorker(env: ApiEnv, { handlers, autostart = true }: WorkerOptions) {
+export async function createWorker(
+  env: ApiEnv,
+  { extraHandlers = [], autostart = true }: WorkerOptions = {},
+) {
   const logger = pino({ level: env.LOG_LEVEL, base: { process: "worker" } });
   const db = createDb(env.DATABASE_URL, env.DB_POOL_MAX);
   // BullMQ requires maxRetriesPerRequest: null on its connections.
@@ -37,7 +42,12 @@ export async function createWorker(env: ApiEnv, { handlers, autostart = true }: 
     },
   });
   const relay = new OutboxRelay(db.db, queue, logger, env.OUTBOX_BATCH, env.OUTBOX_POLL_MS);
-  const dispatcher = new EventDispatcher(db.db, connection, handlers, logger);
+  const dispatcher = new EventDispatcher(
+    db.db,
+    connection,
+    [...handlers, ...extraHandlers],
+    logger,
+  );
 
   const maintenanceQueue = new Queue(MAINTENANCE_QUEUE, { connection });
   await maintenanceQueue.upsertJobScheduler(
