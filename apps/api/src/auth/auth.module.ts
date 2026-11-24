@@ -5,6 +5,7 @@ import type { ApiEnv } from "../env";
 import { EMAIL_SENDER, ENV, SMS_SENDER } from "../tokens";
 import { AuthController } from "./auth.controller";
 import { AuthGuard } from "./auth.guard";
+import { ConsentsController } from "./consents.controller";
 import { MeController } from "./me.controller";
 import { MfaController } from "./mfa.controller";
 import { MfaService } from "./mfa.service";
@@ -17,7 +18,14 @@ import { SocialSignInService } from "./social.service";
 import { TokenService } from "./token.service";
 
 @Module({
-  controllers: [AuthController, MeController, OtpController, SocialController, MfaController],
+  controllers: [
+    AuthController,
+    MeController,
+    ConsentsController,
+    OtpController,
+    SocialController,
+    MfaController,
+  ],
   providers: [
     TokenService,
     SessionService,

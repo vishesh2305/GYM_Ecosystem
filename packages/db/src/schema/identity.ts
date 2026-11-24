@@ -1,5 +1,6 @@
 import {
   bigint,
+  boolean,
   index,
   pgTable,
   smallint,
@@ -128,4 +129,31 @@ export const recoveryCodes = pgTable(
     createdAt: timestamp("created_at", tz).notNull().defaultNow(),
   },
   (t) => [index("recovery_codes_user_idx").on(t.userId)],
+);
+
+export const CONSENT_PURPOSES = [
+  "terms",
+  "privacy",
+  "health_data",
+  "marketing_sms",
+  "marketing_email",
+  "marketing_whatsapp",
+] as const;
+
+/** Every consent decision ever made (DPDP Act 2023): withdrawals are new rows, nothing is updated. */
+export const consents = pgTable(
+  "consents",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    purpose: text("purpose", { enum: CONSENT_PURPOSES }).notNull(),
+    granted: boolean("granted").notNull(),
+    policyVersion: text("policy_version").notNull(),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", tz).notNull().defaultNow(),
+  },
+  (t) => [index("consents_user_purpose_idx").on(t.userId, t.purpose, t.createdAt)],
 );

@@ -13,6 +13,7 @@ import {
   signOutEverywhere,
   verifyOtp,
 } from "./auth";
+import { listConsents, recordConsent } from "./consents";
 import { getMe, updateMe } from "./me";
 import { health, ready } from "./system";
 
@@ -35,4 +36,6 @@ export const routes = {
   disableTotp,
   getMe,
   updateMe,
+  listConsents,
+  recordConsent,
 };
