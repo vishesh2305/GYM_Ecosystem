@@ -3,6 +3,7 @@
   "tasks": {
     "lint": {},
     "typecheck": { "dependsOn": ["^typecheck"] },
-    "test": { "outputs": ["coverage/**"] }
+    "test": { "outputs": ["coverage/**"] },
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] }
   }
 }

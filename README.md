@@ -22,10 +22,12 @@ Local ports avoid 5432/6379 so this project does not clash with other local data
 ## Layout
 
 ```
-apps/          deployables (api, worker — added in A5)
+apps/
+  api/         NestJS 12 + Fastify HTTP API (/v1)
 packages/
   domain/      pure business rules (money, proration, …) — no I/O
   config/      zod-validated environment loading
+  contracts/   route contracts (zod): server validation, OpenAPI, typed client
   db/          Drizzle schema, migrations, tenant scope (RLS), column helpers
 docs/adr/      architecture decision records
 docs/backlog/  user stories with acceptance criteria

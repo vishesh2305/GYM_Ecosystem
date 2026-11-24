@@ -11,6 +11,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "check": "turbo run lint typecheck test",
+    "build": "turbo run build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev:up": "docker compose up -d --wait",

@@ -32,7 +32,31 @@ jobs:
           pnpm --filter @gym/db exec drizzle-kit generate
           git diff --exit-code -- packages/db/migrations
           test -z "$(git status --porcelain packages/db/migrations)"
+      - run: pnpm build
+      - name: OpenAPI document matches contracts
+        run: |
+          pnpm --filter @gym/api openapi
+          git diff --exit-code -- apps/api/openapi.json
       - run: pnpm audit --audit-level high
+
+  api-breaking-changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fail on breaking changes to /v1
+        run: |
+          base="origin/${{ github.base_ref }}"
+          if git cat-file -e "$base:apps/api/openapi.json" 2>/dev/null; then
+            mkdir -p /tmp/base
+            git show "$base:apps/api/openapi.json" > /tmp/base/openapi.json
+            docker run --rm -v /tmp/base:/base -v "$PWD/apps/api:/head" tufin/oasdiff \
+              breaking /base/openapi.json /head/openapi.json --fail-on ERR
+          else
+            echo "No openapi.json on base branch yet; skipping."
+          fi
 
   secrets:
     runs-on: ubuntu-latest
