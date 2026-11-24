@@ -26,6 +26,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm check
+      - name: Migrations match schema
+        run: |
+          pnpm --filter @gym/db exec drizzle-kit check
+          pnpm --filter @gym/db exec drizzle-kit generate
+          git diff --exit-code -- packages/db/migrations
+          test -z "$(git status --porcelain packages/db/migrations)"
       - run: pnpm audit --audit-level high
 
   secrets:

@@ -26,6 +26,7 @@ apps/          deployables (api, worker — added in A5)
 packages/
   domain/      pure business rules (money, proration, …) — no I/O
   config/      zod-validated environment loading
+  db/          Drizzle schema, migrations, tenant scope (RLS), column helpers
 docs/adr/      architecture decision records
 docs/backlog/  user stories with acceptance criteria
 ```
