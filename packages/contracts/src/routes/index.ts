@@ -15,7 +15,15 @@ import {
 } from "./auth";
 import { listConsents, recordConsent } from "./consents";
 import { getMe, updateMe } from "./me";
-import { createPlan, listPlans, updatePlan } from "./membership";
+import {
+  createMember,
+  createPlan,
+  getMember,
+  listMembers,
+  listPlans,
+  updateMember,
+  updatePlan,
+} from "./membership";
 import { health, ready } from "./system";
 import {
   acceptInvite,
@@ -72,4 +80,8 @@ export const routes = {
   listPlans,
   createPlan,
   updatePlan,
+  listMembers,
+  createMember,
+  getMember,
+  updateMember,
 };

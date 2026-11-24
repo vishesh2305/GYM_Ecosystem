@@ -1,6 +1,13 @@
 import { routes, type Route } from "@gym/contracts";
 import { createDb, withTenant, type DbHandle } from "@gym/db";
-import { branches, organisations, plans, staffInvites, staffMembers } from "@gym/db/schema";
+import {
+  branches,
+  members,
+  organisations,
+  plans,
+  staffInvites,
+  staffMembers,
+} from "@gym/db/schema";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import type { ConsoleSmsSender } from "../src/auth/senders";
@@ -21,6 +28,8 @@ const SAMPLE_BODIES: Record<string, object> = {
   updateStaff: { role: "trainer" },
   createPlan: { name: "Intruder plan", durationUnit: "month", durationCount: 1, pricePaise: 100 },
   updatePlan: { pricePaise: 1 },
+  createMember: { name: "Intruder member", homeBranchId: "01930000-0000-7000-8000-0000000000ff" },
+  updateMember: { name: "Renamed by intruder" },
 };
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
@@ -42,6 +51,7 @@ async function snapshot() {
     staff: await tx.select().from(staffMembers),
     invites: await tx.select().from(staffInvites),
     plans: await tx.select().from(plans),
+    members: await tx.select().from(members),
   }));
 }
 
@@ -101,6 +111,14 @@ beforeAll(async () => {
       },
     })
   ).json().id;
+  victim.memberId = (
+    await api.inject({
+      method: "POST",
+      url: `${base}/members`,
+      headers: victimOwner.headers,
+      payload: { name: "Victim member", homeBranchId: victim.branchId },
+    })
+  ).json().id;
 
   const attacker = await signedInStaff(api, dbh.db, { name: "Attacker owner" });
   attackerHeaders = attacker.headers;
@@ -157,5 +175,6 @@ describe("cross-tenant isolation matrix", () => {
     expect(after.staff.map((s) => s.role).sort()).toEqual(["owner", "trainer"]);
     expect(after.invites.find((i) => i.id === victim.inviteId)?.revokedAt).toBeNull();
     expect(after.plans.map((p) => [p.name, p.pricePaise])).toEqual([["Victim plan", 150_000]]);
+    expect(after.members.map((m) => m.name)).toEqual(["Victim member"]);
   });
 });

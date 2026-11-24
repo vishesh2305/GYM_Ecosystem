@@ -82,3 +82,80 @@ export const updatePlan = defineRoute({
     .partial(),
   response: plan,
 });
+
+const memberParams = z.object({ orgId: z.uuid(), memberId: z.uuid() });
+const pastDate = z.iso
+  .date()
+  .refine((d) => d <= new Date().toISOString().slice(0, 10), "Date must not be in the future");
+
+const memberBase = z.object({
+  name: z.string().trim().min(1).max(120),
+  phone: z.string().trim().min(3).max(32),
+  email: z.email().max(254),
+  gender: z.enum(["female", "male", "other", "unspecified"]),
+  dateOfBirth: pastDate,
+  homeBranchId: z.uuid(),
+  emergencyContactName: z.string().trim().max(120),
+  emergencyContactPhone: z.string().trim().min(3).max(32),
+  notes: z.string().trim().max(2000),
+});
+
+export const member = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  phone: z.string().nullable(),
+  email: z.string().nullable(),
+  gender: memberBase.shape.gender.nullable(),
+  dateOfBirth: z.string().nullable(),
+  homeBranchId: z.uuid(),
+  emergencyContactName: z.string().nullable(),
+  emergencyContactPhone: z.string().nullable(),
+  notes: z.string().nullable(),
+  source: z.enum(["manual", "import", "app"]),
+  createdAt: z.iso.datetime(),
+});
+
+export const listMembers = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/members",
+  summary: "Find members by name or phone, newest first, a page at a time",
+  tag: "members",
+  params: orgParams,
+  query: z.object({
+    q: z.string().trim().max(100).optional(),
+    branchId: z.uuid().optional(),
+    after: z.uuid().optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  }),
+  response: z.object({ items: z.array(member), nextCursor: z.uuid().nullable() }),
+});
+
+export const createMember = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/members",
+  summary: "Add a member (owner, manager or front desk)",
+  tag: "members",
+  params: orgParams,
+  body: memberBase.partial().required({ name: true, homeBranchId: true }),
+  response: member,
+  status: 201,
+});
+
+export const getMember = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/members/{memberId}",
+  summary: "One member",
+  tag: "members",
+  params: memberParams,
+  response: member,
+});
+
+export const updateMember = defineRoute({
+  method: "PATCH",
+  path: "/v1/orgs/{orgId}/members/{memberId}",
+  summary: "Change a member's details (owner, manager or front desk)",
+  tag: "members",
+  params: memberParams,
+  body: memberBase.partial(),
+  response: member,
+});
