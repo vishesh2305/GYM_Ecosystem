@@ -1,10 +1,11 @@
 import type { routes } from "@gym/contracts";
 import { withTenant, type DbHandle } from "@gym/db";
-import { and, asc, eq, isNull } from "@gym/db/orm";
+import { and, asc, eq, inArray, isNull } from "@gym/db/orm";
 import { branches } from "@gym/db/schema";
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Inject,
   NotFoundException,
@@ -18,7 +19,14 @@ import { ZodPipe } from "../common/zod.pipe";
 import { recordAudit } from "../platform/audit";
 import { DB } from "../tokens";
 import { toBranch, type BranchOut } from "./mappers";
-import { CurrentTenant, Roles, TenantScoped, type TenantContext } from "./tenant.guard";
+import {
+  canUseBranch,
+  CurrentTenant,
+  isBranchScoped,
+  Roles,
+  TenantScoped,
+  type TenantContext,
+} from "./tenant.guard";
 
 type BranchInput = z.output<typeof routes.createBranch.body>;
 
@@ -30,7 +38,16 @@ export class BranchesController {
   @Get()
   async list(@CurrentTenant() tenant: TenantContext): Promise<BranchOut[]> {
     const rows = await withTenant(this.db.db, tenant.tenantId, (tx) =>
-      tx.select().from(branches).where(isNull(branches.deletedAt)).orderBy(asc(branches.createdAt)),
+      tx
+        .select()
+        .from(branches)
+        .where(
+          and(
+            isNull(branches.deletedAt),
+            isBranchScoped(tenant) ? inArray(branches.id, tenant.branchIds) : undefined,
+          ),
+        )
+        .orderBy(asc(branches.createdAt)),
     );
     return rows.map(toBranch);
   }
@@ -41,6 +58,9 @@ export class BranchesController {
     @CurrentTenant() tenant: TenantContext,
     @Body(new ZodPipe(contracts.createBranch.body)) body: BranchInput,
   ): Promise<BranchOut> {
+    if (isBranchScoped(tenant)) {
+      throw new ForbiddenException("Only staff who look after every branch can open new branches");
+    }
     return withTenant(this.db.db, tenant.tenantId, async (tx) => {
       const [branch] = await tx
         .insert(branches)
@@ -66,6 +86,7 @@ export class BranchesController {
     @Param(new ZodPipe(contracts.updateBranch.params)) params: { branchId: string },
     @Body(new ZodPipe(contracts.updateBranch.body)) body: Partial<BranchInput>,
   ): Promise<BranchOut> {
+    if (!canUseBranch(tenant, params.branchId)) throw new NotFoundException("Branch not found");
     return withTenant(this.db.db, tenant.tenantId, async (tx) => {
       const [branch] = await tx
         .update(branches)

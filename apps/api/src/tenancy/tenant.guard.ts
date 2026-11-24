@@ -90,5 +90,12 @@ export class TenantGuard implements CanActivate {
   }
 }
 
+/** Staff with no branch list work at every branch. */
+export const isBranchScoped = (tenant: TenantContext) => tenant.branchIds.length > 0;
+
+/** May the caller act at this branch? Other branches should look like they do not exist (404). */
+export const canUseBranch = (tenant: TenantContext, branchId: string) =>
+  !isBranchScoped(tenant) || tenant.branchIds.includes(branchId);
+
 /** Mark a controller as acting inside the organisation in its `:orgId` path parameter. */
 export const TenantScoped = () => applyDecorators(UseGuards(TenantGuard));

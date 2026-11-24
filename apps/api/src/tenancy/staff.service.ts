@@ -29,7 +29,7 @@ import { appendEvent } from "../platform/events";
 import { DB, EMAIL_SENDER, ENV, SMS_SENDER } from "../tokens";
 import { staffJoined } from "./events";
 import { toOrganisation, type OrganisationOut } from "./mappers";
-import type { TenantContext } from "./tenant.guard";
+import { isBranchScoped, type TenantContext } from "./tenant.guard";
 
 type InviteIn = z.output<typeof routes.inviteStaff.body>;
 type InviteOut = z.output<typeof routes.inviteStaff.response>;
@@ -58,6 +58,11 @@ export class StaffService {
   async invite(tenant: TenantContext, body: InviteIn): Promise<InviteOut> {
     if (tenant.role === "manager" && (body.role === "owner" || body.role === "manager")) {
       throw new ForbiddenException("Managers can invite front desk staff and trainers only");
+    }
+    const outsideMyBranches =
+      !body.branchIds.length || body.branchIds.some((id) => !tenant.branchIds.includes(id));
+    if (isBranchScoped(tenant) && outsideMyBranches) {
+      throw new ForbiddenException("You can only invite people to your own branches");
     }
     const destination =
       body.channel === "sms"
@@ -240,9 +245,15 @@ export class StaffService {
   }
 
   async list(tenant: TenantContext): Promise<StaffOut[]> {
-    const rows = await withTenant(this.db.db, tenant.tenantId, (tx) =>
+    const all = await withTenant(this.db.db, tenant.tenantId, (tx) =>
       tx.select().from(staffMembers),
     );
+    // Branch-scoped staff see colleagues sharing a branch, plus people who work at every branch.
+    const rows = isBranchScoped(tenant)
+      ? all.filter(
+          (r) => !r.branchIds.length || r.branchIds.some((id) => tenant.branchIds.includes(id)),
+        )
+      : all;
     // Profiles live outside the tenant; the ids come from RLS-filtered rows, so only this gym's staff are read.
     const profiles = rows.length
       ? await this.db.db
