@@ -35,5 +35,6 @@ docs/backlog/  user stories with acceptance criteria
 
 ## Rules
 
-Tests first for business rules. CI must be green to merge. Conventional commits (enforced by commitlint).
+Tests first for business rules. CI must be green to merge.
+One commit per feature, titled in plain English (10-72 characters, no full stop), e.g. "Add phone number sign-in with one-time codes". A short body explains what changed for users; technical details go below it.
 See `docs/adr/` for decisions.
