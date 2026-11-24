@@ -2,7 +2,7 @@ import { createDb, withTenant, type DbHandle } from "@gym/db";
 import { staffMembers } from "@gym/db/schema";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
-import { signedInUser, testEnv } from "./helpers";
+import { signedInStaff, testEnv } from "./helpers";
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
 let dbh: DbHandle;
@@ -24,7 +24,7 @@ const patch = (url: string, headers: Headers, payload: object) =>
 const get = (url: string, headers: Headers) => api.inject({ method: "GET", url, headers });
 
 async function ownerWithGym(name = "Iron Temple") {
-  const owner = await signedInUser(api, dbh.db, { name: "Owner" });
+  const owner = await signedInStaff(api, dbh.db, { name: "Owner" });
   const res = await post("/v1/orgs", owner.headers, {
     name,
     gstin: "27AAPFU0939F1ZV",
@@ -52,7 +52,7 @@ describe("registering a gym business", () => {
   });
 
   it("rejects an invalid GSTIN or time zone", async () => {
-    const someone = await signedInUser(api, dbh.db);
+    const someone = await signedInStaff(api, dbh.db);
     const base = { name: "Gym", branch: { name: "Main", city: "Pune" } };
     expect((await post("/v1/orgs", someone.headers, { ...base, gstin: "123" })).statusCode).toBe(
       400,
@@ -69,7 +69,7 @@ describe("registering a gym business", () => {
     });
     expect(renamed.json().name).toBe("Iron Temple Fitness");
 
-    const manager = await signedInUser(api, dbh.db);
+    const manager = await signedInStaff(api, dbh.db);
     await withTenant(dbh.db, org.id, (tx) =>
       tx
         .insert(staffMembers)
@@ -85,7 +85,7 @@ describe("registering a gym business", () => {
 describe("other people's gyms do not exist for you", () => {
   it("someone who does not work at a gym gets 404, not 403", async () => {
     const { org } = await ownerWithGym();
-    const stranger = await signedInUser(api, dbh.db);
+    const stranger = await signedInStaff(api, dbh.db);
     expect((await get(`/v1/orgs/${org.id}`, stranger.headers)).statusCode).toBe(404);
     expect((await patch(`/v1/orgs/${org.id}`, stranger.headers, { name: "x" })).statusCode).toBe(
       404,
@@ -96,7 +96,7 @@ describe("other people's gyms do not exist for you", () => {
 
   it("a suspended staff member loses access", async () => {
     const { org } = await ownerWithGym();
-    const former = await signedInUser(api, dbh.db);
+    const former = await signedInStaff(api, dbh.db);
     await withTenant(dbh.db, org.id, (tx) =>
       tx.insert(staffMembers).values({
         tenantId: org.id,
@@ -122,7 +122,7 @@ describe("branches", () => {
     });
     expect(edited.json().phone).toBe("+912012345678");
 
-    const desk = await signedInUser(api, dbh.db);
+    const desk = await signedInStaff(api, dbh.db);
     await withTenant(dbh.db, org.id, (tx) =>
       tx
         .insert(staffMembers)

@@ -71,6 +71,8 @@ export const apiEnvSchema = baseEnvSchema
     EMAIL_FROM: z.string().default("Gym Platform <no-reply@localhost>"),
     /** Public address of the web app; used in links sent to people (e.g. staff invites). */
     APP_URL: z.url().default("http://localhost:3001"),
+    /** Owners, managers and front desk must pass two-step verification before using a gym's data. */
+    STAFF_MFA_REQUIRED: z.stringbool().default(true),
     /** OAuth client ids allowed as token audience (web, Android, iOS). Empty = sign-in with Google is off. */
     GOOGLE_CLIENT_IDS: csv,
     GOOGLE_JWKS_URL: z.url().default("https://www.googleapis.com/oauth2/v3/certs"),

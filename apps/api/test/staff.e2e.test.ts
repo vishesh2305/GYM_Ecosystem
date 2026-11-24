@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import type { ConsoleEmailSender, ConsoleSmsSender } from "../src/auth/senders";
 import { EMAIL_SENDER, SMS_SENDER } from "../src/tokens";
-import { signedInUser, testEnv } from "./helpers";
+import { signedInStaff, testEnv } from "./helpers";
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
 let dbh: DbHandle;
@@ -34,7 +34,7 @@ const randomPhone = () => `+9198${String(Math.floor(Math.random() * 1e8)).padSta
 const tokenIn = (text = "") => /\/invite\/([\w.-]+)/.exec(text)?.[1] ?? "";
 
 async function gym() {
-  const owner = await signedInUser(api, dbh.db, { name: "Owner" });
+  const owner = await signedInStaff(api, dbh.db, { name: "Owner" });
   const res = await req("POST", "/v1/orgs", owner.headers, {
     name: "Pulse Gym",
     branch: { name: "Aundh", city: "Pune" },
@@ -62,7 +62,7 @@ describe("inviting staff", () => {
     expect(sms.sent.at(-1)?.text).toMatch(/Pulse Gym/);
     expect(sms.sent.at(-1)?.text).toContain("https://app.gym.test/invite/");
 
-    const invitee = await signedInUser(api, dbh.db, { name: "Desk Person", phone });
+    const invitee = await signedInStaff(api, dbh.db, { name: "Desk Person", phone });
     const accepted = await req("POST", "/v1/invites/accept", invitee.headers, { token });
     expect(accepted.statusCode).toBe(200);
     expect(accepted.json()).toMatchObject({ id: g.org.id, myRole: "front_desk" });
@@ -89,7 +89,7 @@ describe("inviting staff", () => {
         })
       ).statusCode,
     ).toBe(201);
-    const invitee = await signedInUser(api, dbh.db, { email });
+    const invitee = await signedInStaff(api, dbh.db, { email });
     const res = await req("POST", "/v1/invites/accept", invitee.headers, {
       token: tokenIn(mail.sent.at(-1)?.text),
     });
@@ -99,11 +99,11 @@ describe("inviting staff", () => {
   it("only the person it was sent to can accept it, and only once", async () => {
     const g = await gym();
     const { phone, token } = await inviteBySms(g, "trainer");
-    const someoneElse = await signedInUser(api, dbh.db, { phone: randomPhone() });
+    const someoneElse = await signedInStaff(api, dbh.db, { phone: randomPhone() });
     expect(
       (await req("POST", "/v1/invites/accept", someoneElse.headers, { token })).statusCode,
     ).toBe(403);
-    const invitee = await signedInUser(api, dbh.db, { phone });
+    const invitee = await signedInStaff(api, dbh.db, { phone });
     expect((await req("POST", "/v1/invites/accept", invitee.headers, { token })).statusCode).toBe(
       200,
     );
@@ -121,7 +121,7 @@ describe("inviting staff", () => {
         .set({ expiresAt: new Date(Date.now() - 1000) })
         .where(eq(staffInvites.id, expired.res.json().id)),
     );
-    const a = await signedInUser(api, dbh.db, { phone: expired.phone });
+    const a = await signedInStaff(api, dbh.db, { phone: expired.phone });
     expect(
       (await req("POST", "/v1/invites/accept", a.headers, { token: expired.token })).json().detail,
     ).toMatch(/expired/);
@@ -131,7 +131,7 @@ describe("inviting staff", () => {
       (await req("DELETE", `${g.base}/invites/${revoked.res.json().id}`, g.owner.headers))
         .statusCode,
     ).toBe(204);
-    const b = await signedInUser(api, dbh.db, { phone: revoked.phone });
+    const b = await signedInStaff(api, dbh.db, { phone: revoked.phone });
     expect(
       (await req("POST", "/v1/invites/accept", b.headers, { token: revoked.token })).statusCode,
     ).toBe(400);
@@ -159,7 +159,7 @@ describe("who may invite whom", () => {
   it("managers invite front desk and trainers but not managers or owners; front desk cannot invite", async () => {
     const g = await gym();
     const m = await inviteBySms(g, "manager");
-    const manager = await signedInUser(api, dbh.db, { phone: m.phone });
+    const manager = await signedInStaff(api, dbh.db, { phone: m.phone });
     await req("POST", "/v1/invites/accept", manager.headers, { token: m.token });
 
     expect((await inviteBySms(g, "trainer", manager.headers)).res.statusCode).toBe(201);
@@ -167,7 +167,7 @@ describe("who may invite whom", () => {
     expect((await inviteBySms(g, "owner", manager.headers)).res.statusCode).toBe(403);
 
     const d = await inviteBySms(g, "front_desk");
-    const desk = await signedInUser(api, dbh.db, { phone: d.phone });
+    const desk = await signedInStaff(api, dbh.db, { phone: d.phone });
     await req("POST", "/v1/invites/accept", desk.headers, { token: d.token });
     expect((await inviteBySms(g, "trainer", desk.headers)).res.statusCode).toBe(403);
   });
@@ -184,10 +184,10 @@ describe("who may invite whom", () => {
     expect(bad.statusCode).toBe(400);
 
     const ownerPhone = randomPhone();
-    const owner2 = await signedInUser(api, dbh.db, { phone: ownerPhone });
+    const owner2 = await signedInStaff(api, dbh.db, { phone: ownerPhone });
     const t = await inviteBySms(g, "manager");
     void owner2;
-    const joined = await signedInUser(api, dbh.db, { phone: t.phone });
+    const joined = await signedInStaff(api, dbh.db, { phone: t.phone });
     await req("POST", "/v1/invites/accept", joined.headers, { token: t.token });
     const again = await req("POST", `${g.base}/invites`, g.owner.headers, {
       channel: "sms",
@@ -202,7 +202,7 @@ describe("managing staff", () => {
   it("the owner changes roles and removes staff, who then lose access", async () => {
     const g = await gym();
     const t = await inviteBySms(g, "trainer");
-    const trainer = await signedInUser(api, dbh.db, { phone: t.phone });
+    const trainer = await signedInStaff(api, dbh.db, { phone: t.phone });
     await req("POST", "/v1/invites/accept", trainer.headers, { token: t.token });
     const staffId = (
       (await req("GET", `${g.base}/staff`, g.owner.headers)).json() as {
@@ -245,7 +245,7 @@ describe("managing staff", () => {
   it("managers can see the staff list but not change it", async () => {
     const g = await gym();
     const m = await inviteBySms(g, "manager");
-    const manager = await signedInUser(api, dbh.db, { phone: m.phone });
+    const manager = await signedInStaff(api, dbh.db, { phone: m.phone });
     await req("POST", "/v1/invites/accept", manager.headers, { token: m.token });
     const list = (await req("GET", `${g.base}/staff`, manager.headers)).json() as { id: string }[];
     expect(list).toHaveLength(2);

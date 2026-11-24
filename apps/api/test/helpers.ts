@@ -57,3 +57,7 @@ export async function signedInUser(
     .createSession(user.id, { amr: options.amr ?? ["otp"] });
   return { user, ...tokens, headers: { authorization: `Bearer ${tokens.accessToken}` } };
 }
+
+/** A signed-in person whose session has passed two-step verification, as staff need. */
+export const signedInStaff = (...[app, db, options = {}]: Parameters<typeof signedInUser>) =>
+  signedInUser(app, db, { ...options, amr: ["otp", "mfa"] });

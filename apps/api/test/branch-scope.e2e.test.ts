@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import type { ConsoleSmsSender } from "../src/auth/senders";
 import { SMS_SENDER } from "../src/tokens";
-import { signedInUser, testEnv } from "./helpers";
+import { signedInStaff, testEnv } from "./helpers";
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
 let dbh: DbHandle;
@@ -26,7 +26,7 @@ const randomPhone = () => `+9197${String(Math.floor(Math.random() * 1e8)).padSta
 
 /** A gym with branches A and B, and a manager who only works at branch A. */
 async function setup() {
-  const owner = await signedInUser(api, dbh.db, { name: "Owner" });
+  const owner = await signedInStaff(api, dbh.db, { name: "Owner" });
   const created = await req("POST", "/v1/orgs", owner.headers, {
     name: "Two Branch Gym",
     branch: { name: "A", city: "Pune" },
@@ -42,7 +42,7 @@ async function setup() {
     const phone = randomPhone();
     await req("POST", `${base}/invites`, owner.headers, { channel: "sms", phone, role, branchIds });
     const token = /\/invite\/([\w.-]+)/.exec(sms.sent.at(-1)?.text ?? "")?.[1];
-    const person = await signedInUser(api, dbh.db, { phone, name });
+    const person = await signedInStaff(api, dbh.db, { phone, name });
     await req("POST", "/v1/invites/accept", person.headers, { token });
     return person;
   };

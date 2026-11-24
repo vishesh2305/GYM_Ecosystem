@@ -17,7 +17,8 @@ import {
 import { Reflector } from "@nestjs/core";
 import type { FastifyRequest } from "fastify";
 import { validate } from "uuid";
-import { DB } from "../tokens";
+import type { ApiEnv } from "../env";
+import { DB, ENV } from "../tokens";
 
 /** The organisation a request acts in, and the caller's job there. Set by TenantGuard. */
 export interface TenantContext {
@@ -35,6 +36,8 @@ declare module "fastify" {
 }
 
 const ROLES = "tenancy:roles";
+/** Roles that can see member data or money, and so must use two-step verification. */
+const MFA_ROLES: ReadonlySet<StaffRole> = new Set(["owner", "manager", "front_desk"]);
 
 /** Restrict a tenant route to these roles. Without it, any active staff member may call it. */
 export const Roles = (...roles: StaffRole[]) => SetMetadata(ROLES, roles);
@@ -54,6 +57,7 @@ export class TenantGuard implements CanActivate {
   constructor(
     @Inject(DB) private readonly db: DbHandle,
     @Inject(Reflector) private readonly reflector: Reflector,
+    @Inject(ENV) private readonly env: ApiEnv,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -72,6 +76,16 @@ export class TenantGuard implements CanActivate {
         .where(and(eq(staffMembers.tenantId, orgId), eq(staffMembers.status, "active"))),
     );
     if (!membership) throw notFound;
+
+    if (
+      this.env.STAFF_MFA_REQUIRED &&
+      MFA_ROLES.has(membership.role) &&
+      !request.auth?.amr.includes("mfa")
+    ) {
+      throw new ForbiddenException(
+        "Two-step verification is required for staff accounts. Turn it on in your account security settings.",
+      );
+    }
 
     const allowed = this.reflector.getAllAndOverride<StaffRole[] | undefined>(ROLES, [
       context.getHandler(),
