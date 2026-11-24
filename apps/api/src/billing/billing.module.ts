@@ -11,6 +11,7 @@ import {
 } from "./online-payments.controller";
 import { PaymentsController } from "./payments.controller";
 import { PaymentsService } from "./payments.service";
+import { RefundsController, RefundsService } from "./refunds";
 
 @Module({
   imports: [MembershipModule],
@@ -19,10 +20,12 @@ import { PaymentsService } from "./payments.service";
     PaymentsController,
     StartOnlinePaymentController,
     RazorpayWebhookController,
+    RefundsController,
   ],
   providers: [
     PaymentsService,
     OnlinePaymentsService,
+    RefundsService,
     {
       provide: PAYMENT_GATEWAY,
       inject: [ENV],

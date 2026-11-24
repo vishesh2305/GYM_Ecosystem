@@ -126,3 +126,24 @@ export const razorpayWebhook = defineRoute({
   body: z.unknown(),
   response: z.object({ received: z.literal(true) }),
 });
+
+export const refundPayment = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/payments/{paymentId}/refunds",
+  summary:
+    "Give money back from a payment (owner or manager). Online payments are refunded through the gateway.",
+  tag: "billing",
+  params: z.object({ orgId: z.uuid(), paymentId: z.uuid() }),
+  body: z.object({
+    amountPaise: z.number().int().min(1).max(1_000_000_000),
+    reason: z.string().trim().min(2).max(200),
+  }),
+  response: z.object({
+    id: z.uuid(),
+    paymentId: z.uuid(),
+    amountPaise: z.number().int(),
+    gatewayRefundId: z.string().nullable(),
+    payment,
+  }),
+  status: 201,
+});

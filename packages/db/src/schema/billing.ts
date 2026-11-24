@@ -179,3 +179,26 @@ export const payments = pgTable(
     ),
   ],
 );
+
+/** Money given back from a payment (through the gateway for online payments, by hand at the desk). */
+export const refunds = pgTable(
+  "refunds",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    paymentId: uuid("payment_id")
+      .notNull()
+      .references(() => payments.id),
+    amountPaise: integer("amount_paise").notNull(),
+    reason: text("reason").notNull(),
+    gatewayRefundId: text("gateway_refund_id"),
+    createdBy: uuid("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("refunds_payment_idx").on(t.tenantId, t.paymentId),
+    check("refunds_positive", sql`${t.amountPaise} > 0`),
+  ],
+);

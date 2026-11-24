@@ -38,6 +38,7 @@ const SAMPLE_BODIES: Record<string, object> = {
   changeMembershipPlan: { planId: "01930000-0000-7000-8000-0000000000ee" },
   cancelMembership: { reason: "Cancelled by intruder" },
   recordPayment: { method: "cash", amountPaise: 100 },
+  refundPayment: { amountPaise: 1, reason: "Refunded by intruder" },
   createMemberImport: {
     fileName: "x.csv",
     csv: "Name\nIntruder",
@@ -169,6 +170,14 @@ beforeAll(async () => {
     });
   });
   victim.invoiceId = sale?.id ?? "";
+  victim.paymentId = (
+    await api.inject({
+      method: "POST",
+      url: `${base}/invoices/${victim.invoiceId}/payments`,
+      headers: { ...victimOwner.headers, "idempotency-key": "victim-pay" },
+      payload: { method: "cash", amountPaise: 1000 },
+    })
+  ).json().id;
 
   const attacker = await signedInStaff(api, dbh.db, { name: "Attacker owner" });
   attackerHeaders = attacker.headers;
