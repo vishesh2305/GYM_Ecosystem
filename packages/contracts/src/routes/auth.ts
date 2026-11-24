@@ -63,3 +63,28 @@ export const revokeSession = defineRoute({
   response: z.undefined(),
   status: 204,
 });
+
+export const requestOtp = defineRoute({
+  method: "POST",
+  path: "/v1/auth/otp/request",
+  summary: "Send a one-time sign-in code",
+  tag: "auth",
+  body: z.discriminatedUnion("channel", [
+    z.object({ channel: z.literal("sms"), phone: z.string().trim().min(3).max(32) }),
+  ]),
+  response: z.object({ challengeId: z.uuid(), expiresAt: z.iso.datetime() }),
+  status: 202,
+});
+
+export const verifyOtp = defineRoute({
+  method: "POST",
+  path: "/v1/auth/otp/verify",
+  summary: "Sign in with the one-time code (creates the account on first sign-in)",
+  tag: "auth",
+  body: z.object({
+    challengeId: z.uuid(),
+    code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code"),
+    deviceName: z.string().trim().max(100).optional(),
+  }),
+  response: tokenPair.extend({ isNewUser: z.boolean() }),
+});

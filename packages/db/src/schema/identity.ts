@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, pgTable, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "../columns";
 
 const tz = { withTimezone: true } as const;
@@ -55,4 +55,22 @@ export const refreshTokens = pgTable(
     createdAt: timestamp("created_at", tz).notNull().defaultNow(),
   },
   (t) => [index("refresh_tokens_session_idx").on(t.sessionId)],
+);
+
+/** A one-time sign-in code sent by SMS or email. Only an HMAC of the code is stored. */
+export const otpChallenges = pgTable(
+  "otp_challenges",
+  {
+    id: id(),
+    channel: text("channel", { enum: ["sms", "email"] }).notNull(),
+    /** E.164 phone or lower-cased email. */
+    destination: text("destination").notNull(),
+    codeHash: text("code_hash").notNull(),
+    attempts: smallint("attempts").notNull().default(0),
+    expiresAt: timestamp("expires_at", tz).notNull(),
+    consumedAt: timestamp("consumed_at", tz),
+    ip: text("ip"),
+    createdAt: timestamp("created_at", tz).notNull().defaultNow(),
+  },
+  (t) => [index("otp_challenges_destination_idx").on(t.destination, t.createdAt)],
 );

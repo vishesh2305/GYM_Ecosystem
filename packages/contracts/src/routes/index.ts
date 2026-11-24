@@ -1,4 +1,12 @@
-import { listSessions, refreshSession, revokeSession, signOut, signOutEverywhere } from "./auth";
+import {
+  listSessions,
+  refreshSession,
+  requestOtp,
+  revokeSession,
+  signOut,
+  signOutEverywhere,
+  verifyOtp,
+} from "./auth";
 import { getMe, updateMe } from "./me";
 import { health, ready } from "./system";
 
@@ -6,6 +14,8 @@ import { health, ready } from "./system";
 export const routes = {
   health,
   ready,
+  requestOtp,
+  verifyOtp,
   refreshSession,
   signOut,
   signOutEverywhere,

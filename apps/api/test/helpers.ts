@@ -1,5 +1,5 @@
 import { parseEnv } from "@gym/config";
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { inject } from "vitest";
 import { apiEnvSchema, type ApiEnv } from "../src/env";
 
@@ -7,6 +7,7 @@ import { apiEnvSchema, type ApiEnv } from "../src/env";
 const signingKey = JSON.stringify(
   generateKeyPairSync("ed25519").privateKey.export({ format: "jwk" }),
 );
+const authSecret = randomBytes(32).toString("base64url");
 
 export function testEnv(overrides: Record<string, string> = {}): ApiEnv {
   return parseEnv(apiEnvSchema, {
@@ -16,6 +17,7 @@ export function testEnv(overrides: Record<string, string> = {}): ApiEnv {
     REDIS_URL: inject("redisUrl"),
     CORS_ORIGINS: "https://app.gym.test",
     JWT_PRIVATE_JWK: signingKey,
+    AUTH_SECRET: authSecret,
     ...overrides,
   });
 }

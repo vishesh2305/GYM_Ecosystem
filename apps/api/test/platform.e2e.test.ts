@@ -161,7 +161,7 @@ describe("outbox → queue → handler", () => {
     const [row] = await dbh.db.select().from(outboxEvents).where(eq(outboxEvents.id, id));
     expect(row?.publishedAt).toBeNull();
 
-    expect(await worker.relay.drainOnce()).toBe(1);
+    expect(await worker.relay.drainOnce()).toBeGreaterThanOrEqual(1); // other test files share the outbox
     const [after] = await dbh.db.select().from(outboxEvents).where(eq(outboxEvents.id, id));
     expect(after?.publishedAt).toBeInstanceOf(Date);
     const job = await worker.queue.getJob(id);
@@ -177,7 +177,7 @@ describe("outbox → queue → handler", () => {
     const id = await ping("crash");
     await worker.relay.drainOnce();
     await dbh.db.update(outboxEvents).set({ publishedAt: null }).where(eq(outboxEvents.id, id));
-    expect(await worker.relay.drainOnce()).toBe(1);
+    expect(await worker.relay.drainOnce()).toBeGreaterThanOrEqual(1); // other test files share the outbox
     const jobs = await worker.queue.getJobs(["waiting", "prioritized", "delayed", "completed"]);
     expect(jobs.filter((j) => j.id === id)).toHaveLength(1);
     worker.dispatcher.start();
