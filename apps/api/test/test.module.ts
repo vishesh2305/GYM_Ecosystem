@@ -2,6 +2,7 @@ import { withTenant, type DbHandle } from "@gym/db";
 import { BadRequestException, Body, Controller, Get, Inject, Module, Post } from "@nestjs/common";
 import { v7 } from "uuid";
 import { z } from "zod";
+import { Public } from "../src/auth/auth.guard";
 import { ZodPipe } from "../src/common/zod.pipe";
 import { appendEvent, defineEvent } from "../src/platform/events";
 import { RequireIdempotencyKey } from "../src/platform/idempotency";
@@ -22,6 +23,7 @@ export const testDoomed = defineEvent("test.doomed", z.object({ message: z.strin
 export const testState = { charges: 0, failNext: false };
 
 // Test-only routes, mounted under /v1/_test, to exercise platform behaviour end to end.
+@Public()
 @Controller("_test")
 class TestController {
   constructor(@Inject(DB) private readonly db: DbHandle) {}

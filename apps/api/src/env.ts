@@ -1,6 +1,24 @@
 import { baseEnvSchema } from "@gym/config";
 import { z } from "zod";
 
+/** Ed25519 private key as a JWK JSON string (`pnpm --filter @gym/api keys` prints one). */
+const ed25519Jwk = z
+  .string()
+  .transform((value, ctx) => {
+    try {
+      return JSON.parse(value) as unknown;
+    } catch {
+      ctx.addIssue({ code: "custom", message: "must be a JSON Web Key" });
+      return z.NEVER;
+    }
+  })
+  .pipe(
+    z.object(
+      { kty: z.literal("OKP"), crv: z.literal("Ed25519"), x: z.string(), d: z.string() },
+      { error: "must be an Ed25519 private JWK" },
+    ),
+  );
+
 export const apiEnvSchema = baseEnvSchema.extend({
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
@@ -23,6 +41,12 @@ export const apiEnvSchema = baseEnvSchema.extend({
   OUTBOX_BATCH: z.coerce.number().int().positive().max(1000).default(100),
   EVENT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(8),
   EVENT_BACKOFF_MS: z.coerce.number().int().positive().default(1000),
+  JWT_PRIVATE_JWK: ed25519Jwk,
+  JWT_ISSUER: z.string().default("gym-platform"),
+  JWT_AUDIENCE: z.string().default("gym-api"),
+  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(3600).default(900),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(0).default(30),
+  SESSION_MAX_DAYS: z.coerce.number().int().positive().default(90),
 });
 
 export type ApiEnv = z.output<typeof apiEnvSchema>;

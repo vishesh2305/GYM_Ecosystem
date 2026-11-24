@@ -3,6 +3,7 @@ import type { routes } from "@gym/contracts";
 import { Controller, Get, Inject, ServiceUnavailableException } from "@nestjs/common";
 import type { Redis } from "ioredis";
 import type { z } from "zod";
+import { Public } from "../auth/auth.guard";
 import { DB, REDIS } from "../tokens";
 
 type Out<R extends { response: z.ZodType }> = z.output<R["response"]>;
@@ -26,6 +27,7 @@ async function check(probe: () => Promise<unknown>, ms = 1000): Promise<boolean>
   }
 }
 
+@Public()
 @Controller()
 export class HealthController {
   constructor(

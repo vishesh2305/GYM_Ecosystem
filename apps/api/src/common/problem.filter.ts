@@ -10,6 +10,7 @@ export class ProblemFilter implements ExceptionFilter {
     const reply = http.getResponse<FastifyReply>();
     const problem = toProblem(exception, request.id);
     if (problem.status >= 500) request.log.error({ err: exception }, "request failed");
+    if (problem.status === 401) void reply.header("www-authenticate", "Bearer");
     void reply.status(problem.status).type("application/problem+json").send(problem);
   }
 }

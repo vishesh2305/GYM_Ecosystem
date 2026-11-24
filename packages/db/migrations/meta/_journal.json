@@ -22,6 +22,20 @@
       "when": 1795545886134,
       "tag": "0002_platform_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795547016476,
+      "tag": "0003_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795547016727,
+      "tag": "0004_identity_grants",
+      "breakpoints": true
     }
   ]
 }

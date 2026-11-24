@@ -1,0 +1,65 @@
+import { z } from "zod";
+import { defineRoute } from "../route";
+
+export const tokenPair = z.object({
+  accessToken: z.string(),
+  refreshToken: z.string(),
+  tokenType: z.literal("Bearer"),
+  /** Seconds until the access token expires. */
+  expiresIn: z.number().int(),
+});
+
+export const refreshSession = defineRoute({
+  method: "POST",
+  path: "/v1/auth/refresh",
+  summary: "Exchange a refresh token for a new token pair (the old refresh token stops working)",
+  tag: "auth",
+  body: z.object({ refreshToken: z.string().min(1).max(200) }),
+  response: tokenPair,
+});
+
+export const signOut = defineRoute({
+  method: "POST",
+  path: "/v1/auth/logout",
+  summary: "Sign out this device",
+  tag: "auth",
+  response: z.undefined(),
+  status: 204,
+});
+
+export const signOutEverywhere = defineRoute({
+  method: "POST",
+  path: "/v1/auth/logout-all",
+  summary: "Sign out every device",
+  tag: "auth",
+  response: z.undefined(),
+  status: 204,
+});
+
+export const listSessions = defineRoute({
+  method: "GET",
+  path: "/v1/auth/sessions",
+  summary: "Devices that are signed in to my account",
+  tag: "auth",
+  response: z.array(
+    z.object({
+      id: z.uuid(),
+      deviceName: z.string().nullable(),
+      userAgent: z.string().nullable(),
+      ip: z.string().nullable(),
+      createdAt: z.iso.datetime(),
+      lastUsedAt: z.iso.datetime(),
+      current: z.boolean(),
+    }),
+  ),
+});
+
+export const revokeSession = defineRoute({
+  method: "DELETE",
+  path: "/v1/auth/sessions/{sessionId}",
+  summary: "Sign out one of my devices",
+  tag: "auth",
+  params: z.object({ sessionId: z.uuid() }),
+  response: z.undefined(),
+  status: 204,
+});
