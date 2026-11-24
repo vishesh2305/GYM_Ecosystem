@@ -30,6 +30,7 @@ const SAMPLE_BODIES: Record<string, object> = {
   updatePlan: { pricePaise: 1 },
   createMember: { name: "Intruder member", homeBranchId: "01930000-0000-7000-8000-0000000000ff" },
   updateMember: { name: "Renamed by intruder" },
+  enrolMember: { planId: "01930000-0000-7000-8000-0000000000ee" },
 };
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];

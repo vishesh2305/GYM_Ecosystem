@@ -8,6 +8,7 @@ import {
   pgTable,
   smallint,
   text,
+  timestamp,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -82,5 +83,54 @@ export const members = pgTable(
       .on(t.tenantId, t.phone)
       .where(sql`${t.phone} is not null and ${t.deletedAt} is null`),
     index("members_tenant_branch_idx").on(t.tenantId, t.homeBranchId),
+  ],
+);
+
+export const MEMBERSHIP_STATUSES = [
+  "pending",
+  "trial",
+  "active",
+  "frozen",
+  "expired",
+  "cancelled",
+] as const;
+
+/** A plan sold to a member for a period. Prices are copied from the plan at the time of sale. */
+export const memberships = pgTable(
+  "memberships",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => plans.id),
+    planName: text("plan_name").notNull(),
+    status: text("status", { enum: MEMBERSHIP_STATUSES }).notNull(),
+    /** Inclusive calendar dates in the gym's time zone. */
+    startDate: date("start_date", { mode: "string" }).notNull(),
+    endDate: date("end_date", { mode: "string" }).notNull(),
+    isTrial: boolean("is_trial").notNull(),
+    pricePaise: integer("price_paise").notNull(),
+    joiningFeePaise: integer("joining_fee_paise").notNull(),
+    gstRateBps: smallint("gst_rate_bps").notNull(),
+    gstPaise: integer("gst_paise").notNull(),
+    totalPaise: integer("total_paise").notNull(),
+    maxFreezes: smallint("max_freezes").notNull(),
+    maxFreezeDays: smallint("max_freeze_days").notNull(),
+    freezesUsed: smallint("freezes_used").notNull().default(0),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
+    createdBy: uuid("created_by"),
+    ...timestamps,
+  },
+  (t) => [
+    index("memberships_member_idx").on(t.tenantId, t.memberId),
+    index("memberships_status_end_idx").on(t.tenantId, t.status, t.endDate),
+    check("memberships_dates_ordered", sql`${t.startDate} <= ${t.endDate}`),
   ],
 );

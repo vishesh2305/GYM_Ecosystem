@@ -159,3 +159,52 @@ export const updateMember = defineRoute({
   body: memberBase.partial(),
   response: member,
 });
+
+export const membershipStatus = z.enum([
+  "pending",
+  "trial",
+  "active",
+  "frozen",
+  "expired",
+  "cancelled",
+]);
+
+export const membership = z.object({
+  id: z.uuid(),
+  memberId: z.uuid(),
+  planId: z.uuid(),
+  planName: z.string(),
+  status: membershipStatus,
+  startDate: z.iso.date(),
+  endDate: z.iso.date(),
+  isTrial: z.boolean(),
+  pricePaise: z.number().int(),
+  joiningFeePaise: z.number().int(),
+  gstPaise: z.number().int(),
+  totalPaise: z.number().int(),
+  freezesUsed: z.number().int(),
+  maxFreezes: z.number().int(),
+  cancelledAt: z.iso.datetime().nullable(),
+  cancelReason: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+});
+
+export const listMemberships = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/members/{memberId}/memberships",
+  summary: "A member's memberships, newest first",
+  tag: "memberships",
+  params: memberParams,
+  response: z.array(membership),
+});
+
+export const enrolMember = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/members/{memberId}/memberships",
+  summary: "Sign a member up to a plan, from today or a later date (owner, manager or front desk)",
+  tag: "memberships",
+  params: memberParams,
+  body: z.object({ planId: z.uuid(), startDate: z.iso.date().optional() }),
+  response: membership,
+  status: 201,
+});

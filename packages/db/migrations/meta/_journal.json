@@ -148,6 +148,20 @@
       "when": 1795550097295,
       "tag": "0020_members_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795550209852,
+      "tag": "0021_memberships",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795550210108,
+      "tag": "0022_memberships_rls",
+      "breakpoints": true
     }
   ]
 }

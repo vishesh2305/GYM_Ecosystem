@@ -16,6 +16,8 @@ import {
 import { listConsents, recordConsent } from "./consents";
 import { getMe, updateMe } from "./me";
 import {
+  enrolMember,
+  listMemberships,
   createMember,
   createPlan,
   getMember,
@@ -84,4 +86,6 @@ export const routes = {
   createMember,
   getMember,
   updateMember,
+  listMemberships,
+  enrolMember,
 };
