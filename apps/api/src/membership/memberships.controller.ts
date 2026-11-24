@@ -47,6 +47,17 @@ export class MembershipActionsController {
     return this.service.freeze(tenant, params.membershipId, body);
   }
 
+  @Post("change-plan")
+  @HttpCode(200)
+  @Roles("owner", "manager", "front_desk")
+  changePlan(
+    @CurrentTenant() tenant: TenantContext,
+    @Param(new ZodPipe(contracts.changeMembershipPlan.params)) params: { membershipId: string },
+    @Body(new ZodPipe(contracts.changeMembershipPlan.body)) body: { planId: string },
+  ): Promise<z.output<typeof routes.changeMembershipPlan.response>> {
+    return this.service.changePlan(tenant, params.membershipId, body.planId);
+  }
+
   @Post("unfreeze")
   @HttpCode(200)
   @Roles("owner", "manager", "front_desk")

@@ -1,4 +1,5 @@
 import { daysBetween } from "./dates";
+import { allocate } from "./money";
 export const MEMBERSHIP_STATUSES = [
   "pending",
   "trial",
@@ -47,4 +48,25 @@ export function unfreezeSplit(input: { startsOn: string; days: number; today: st
 } {
   const usedDays = Math.min(input.days, Math.max(0, daysBetween(input.startsOn, input.today)));
   return { usedDays, unusedDays: input.days - usedDays };
+}
+
+/**
+ * Value of the unused days of a membership (today counts as unused: the new plan starts today).
+ * Uses allocate(), so credit + used always equals the price exactly. Joining fees and GST are not credited.
+ */
+export function prorateCredit(input: {
+  pricePaise: number;
+  startDate: string;
+  endDate: string;
+  today: string;
+}): {
+  totalDays: number;
+  unusedDays: number;
+  creditPaise: number;
+} {
+  const totalDays = daysBetween(input.startDate, input.endDate) + 1;
+  const from = input.today > input.startDate ? input.today : input.startDate;
+  const unusedDays = Math.min(totalDays, Math.max(0, daysBetween(from, input.endDate) + 1));
+  const [creditPaise = 0] = allocate(input.pricePaise, [unusedDays, totalDays - unusedDays]);
+  return { totalDays, unusedDays, creditPaise };
 }

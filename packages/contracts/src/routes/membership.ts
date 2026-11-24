@@ -233,3 +233,14 @@ export const unfreezeMembership = defineRoute({
   params: membershipParams,
   response: membership,
 });
+
+export const changeMembershipPlan = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/memberships/{membershipId}/change-plan",
+  summary:
+    "Move a member to another plan from today; the unused value of the current plan becomes a credit",
+  tag: "memberships",
+  params: membershipParams,
+  body: z.object({ planId: z.uuid() }),
+  response: z.object({ previous: membership, current: membership, creditPaise: z.number().int() }),
+});

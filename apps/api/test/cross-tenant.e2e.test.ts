@@ -33,6 +33,7 @@ const SAMPLE_BODIES: Record<string, object> = {
   updateMember: { name: "Renamed by intruder" },
   enrolMember: { planId: "01930000-0000-7000-8000-0000000000ee" },
   freezeMembership: { days: 3 },
+  changeMembershipPlan: { planId: "01930000-0000-7000-8000-0000000000ee" },
 };
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];

@@ -9,6 +9,7 @@ import {
   LIVE_STATUSES,
   planEndDate,
   priceBreakdown,
+  prorateCredit,
   todayIn,
   unfreezeSplit,
   type MembershipStatus,
@@ -25,7 +26,7 @@ import { recordAudit } from "../platform/audit";
 import { appendEvent } from "../platform/events";
 import type { TenantContext } from "../tenancy/tenant.guard";
 import { DB } from "../tokens";
-import { membershipCreated } from "./events";
+import { membershipCreated, membershipPlanChanged } from "./events";
 import { MembersService } from "./members.service";
 
 export type MembershipOut = z.output<typeof routes.enrolMember.response>;
@@ -89,92 +90,141 @@ export class MembershipsService {
       const today = await orgToday(tx);
       const startDate = input.startDate ?? today;
       if (startDate < today) throw new BadRequestException("A membership cannot start in the past");
+      return toMembership(await this.sell(tx, tenant, member, input.planId, startDate, today));
+    });
+  }
 
-      const [plan] = await tx.select().from(plans).where(eq(plans.id, input.planId));
-      if (!plan || !plan.active) throw new BadRequestException("This plan is not available");
-      if (plan.branchIds.length && !plan.branchIds.includes(member.homeBranchId)) {
-        throw new BadRequestException("This plan is not sold at the member's home branch");
-      }
-
-      const live = await tx
-        .select()
-        .from(memberships)
-        .where(
-          and(eq(memberships.memberId, memberId), inArray(memberships.status, [...LIVE_STATUSES])),
-        );
-      const clash = live.find((m) => m.endDate >= startDate);
-      if (clash) {
-        throw new ConflictException(
-          `The member already has a membership until ${clash.endDate}; start the new one after that`,
-        );
-      }
-
-      const [previous] = await tx
-        .select({ n: count() })
-        .from(memberships)
-        .where(eq(memberships.memberId, memberId));
-      const joiningFeePaise = previous?.n ? 0 : plan.joiningFeePaise;
-      const price = priceBreakdown({
-        pricePaise: plan.pricePaise,
-        joiningFeePaise,
-        gstRateBps: plan.gstRateBps,
-      });
-      const endDate = planEndDate(startDate, {
-        unit: plan.durationUnit,
-        count: plan.durationCount,
-      });
-
-      const [row] = await tx
-        .insert(memberships)
-        .values({
-          tenantId: tenant.tenantId,
-          memberId,
-          planId: plan.id,
-          planName: plan.name,
-          status: initialStatus({ startDate, today, isTrial: plan.isTrial }),
-          startDate,
-          endDate,
-          isTrial: plan.isTrial,
-          pricePaise: price.pricePaise,
-          joiningFeePaise: price.joiningFeePaise,
-          gstRateBps: plan.gstRateBps,
-          gstPaise: price.gstPaise,
-          totalPaise: price.totalPaise,
-          maxFreezes: plan.maxFreezes,
-          maxFreezeDays: plan.maxFreezeDays,
-          createdBy: tenant.staffId,
-        })
+  /**
+   * Move a member to another plan from today. The unused part of the current plan's price becomes a credit
+   * for billing; the current membership is cancelled as "changed plan". Paused memberships must be resumed first.
+   */
+  async changePlan(tenant: TenantContext, membershipId: string, planId: string) {
+    const current = await this.findVisible(tenant, membershipId);
+    if (!["active", "trial", "pending"].includes(current.status)) {
+      throw new ConflictException(`A ${current.status} membership cannot change plan`);
+    }
+    const member = await this.members.find(tenant, current.memberId);
+    return withTenant(this.db.db, tenant.tenantId, async (tx) => {
+      const today = await orgToday(tx);
+      const { creditPaise } = prorateCredit({ ...current, today });
+      const [old] = await tx
+        .update(memberships)
+        .set({ status: "cancelled", cancelledAt: new Date(), cancelReason: "changed_plan" })
+        .where(and(eq(memberships.id, membershipId), eq(memberships.status, current.status)))
         .returning();
-      if (!row) throw new Error("membership insert returned nothing");
-
+      if (!old)
+        throw new ConflictException(
+          "The membership was changed at the same time; please try again",
+        );
+      const next = await this.sell(tx, tenant, member, planId, today, today);
       await appendEvent(
         tx,
-        membershipCreated,
-        {
-          membershipId: row.id,
-          memberId,
-          planId: plan.id,
-          startDate,
-          endDate,
-          pricePaise: price.pricePaise,
-          joiningFeePaise: price.joiningFeePaise,
-          gstRateBps: plan.gstRateBps,
-          gstPaise: price.gstPaise,
-          totalPaise: price.totalPaise,
-        },
+        membershipPlanChanged,
+        { oldMembershipId: old.id, newMembershipId: next.id, memberId: member.id, creditPaise },
         tenant.tenantId,
       );
       await recordAudit(tx, {
         tenantId: tenant.tenantId,
         actorType: "staff",
         actorId: tenant.staffId,
-        action: "membership.created",
+        action: "membership.plan_changed",
         entityType: "membership",
-        entityId: row.id,
-        data: { planId: plan.id, startDate, endDate, totalPaise: price.totalPaise },
+        entityId: old.id,
+        data: { newMembershipId: next.id, creditPaise },
       });
-      return toMembership(row);
+      return { previous: toMembership(old), current: toMembership(next), creditPaise };
     });
+  }
+
+  private async sell(
+    tx: Tx,
+    tenant: TenantContext,
+    member: { id: string; homeBranchId: string },
+    planId: string,
+    startDate: string,
+    today: string,
+  ) {
+    const [plan] = await tx.select().from(plans).where(eq(plans.id, planId));
+    if (!plan || !plan.active) throw new BadRequestException("This plan is not available");
+    if (plan.branchIds.length && !plan.branchIds.includes(member.homeBranchId)) {
+      throw new BadRequestException("This plan is not sold at the member's home branch");
+    }
+
+    const live = await tx
+      .select()
+      .from(memberships)
+      .where(
+        and(eq(memberships.memberId, member.id), inArray(memberships.status, [...LIVE_STATUSES])),
+      );
+    const clash = live.find((m) => m.endDate >= startDate);
+    if (clash) {
+      throw new ConflictException(
+        `The member already has a membership until ${clash.endDate}; start the new one after that`,
+      );
+    }
+
+    const [previous] = await tx
+      .select({ n: count() })
+      .from(memberships)
+      .where(eq(memberships.memberId, member.id));
+    const joiningFeePaise = previous?.n ? 0 : plan.joiningFeePaise;
+    const price = priceBreakdown({
+      pricePaise: plan.pricePaise,
+      joiningFeePaise,
+      gstRateBps: plan.gstRateBps,
+    });
+    const endDate = planEndDate(startDate, { unit: plan.durationUnit, count: plan.durationCount });
+
+    const [row] = await tx
+      .insert(memberships)
+      .values({
+        tenantId: tenant.tenantId,
+        memberId: member.id,
+        planId: plan.id,
+        planName: plan.name,
+        status: initialStatus({ startDate, today, isTrial: plan.isTrial }),
+        startDate,
+        endDate,
+        isTrial: plan.isTrial,
+        pricePaise: price.pricePaise,
+        joiningFeePaise: price.joiningFeePaise,
+        gstRateBps: plan.gstRateBps,
+        gstPaise: price.gstPaise,
+        totalPaise: price.totalPaise,
+        maxFreezes: plan.maxFreezes,
+        maxFreezeDays: plan.maxFreezeDays,
+        createdBy: tenant.staffId,
+      })
+      .returning();
+    if (!row) throw new Error("membership insert returned nothing");
+
+    await appendEvent(
+      tx,
+      membershipCreated,
+      {
+        membershipId: row.id,
+        memberId: member.id,
+        planId: plan.id,
+        startDate,
+        endDate,
+        pricePaise: price.pricePaise,
+        joiningFeePaise: price.joiningFeePaise,
+        gstRateBps: plan.gstRateBps,
+        gstPaise: price.gstPaise,
+        totalPaise: price.totalPaise,
+      },
+      tenant.tenantId,
+    );
+    await recordAudit(tx, {
+      tenantId: tenant.tenantId,
+      actorType: "staff",
+      actorId: tenant.staffId,
+      action: "membership.created",
+      entityType: "membership",
+      entityId: row.id,
+      data: { planId: plan.id, startDate, endDate, totalPaise: price.totalPaise },
+    });
+    return row;
   }
 
   /** Pause an active membership; its end date moves back by the frozen days. */

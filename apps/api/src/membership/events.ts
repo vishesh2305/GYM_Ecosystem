@@ -17,3 +17,14 @@ export const membershipCreated = defineEvent(
     totalPaise: z.number().int(),
   }),
 );
+
+/** Plan changed: billing credits the unused value of the old plan against the new one. */
+export const membershipPlanChanged = defineEvent(
+  "membership.plan_changed",
+  z.object({
+    oldMembershipId: z.uuid(),
+    newMembershipId: z.uuid(),
+    memberId: z.uuid(),
+    creditPaise: z.number().int(),
+  }),
+);
