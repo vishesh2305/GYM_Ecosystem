@@ -1,3 +1,11 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# Dependency install scripts must be approved explicitly (pnpm blocks them otherwise; CI fails).
+allowBuilds:
+  esbuild: true # sets up the platform binary for tsx, drizzle-kit, tsdown
+  msgpackr-extract: true # optional native speed-up for BullMQ (prebuilt)
+  protobufjs: false # version-check script only; OpenTelemetry works without it
+  ssh2: false # optional native crypto; Docker over SSH is not used
+  cpu-features: false # optional native helper for ssh2
