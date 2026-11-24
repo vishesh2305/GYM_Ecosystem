@@ -13,5 +13,5 @@ const { db, pool } = createDb(url);
 await seed(db);
 await pool.end();
 process.stdout.write(
-  `Demo data ready: "Demo Fitness" with 2 branches. Sign in with ${DEMO.staff.map((s) => `${s.phone} (${s.role})`).join(", ")}.\n`,
+  `Demo data ready: "Demo Fitness" with 2 branches, 4 plans and ${DEMO.memberCount} members. Staff sign in with ${DEMO.staff.map((s) => `${s.phone} (${s.role})`).join(", ")}.\n`,
 );

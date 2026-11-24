@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, inject } from "vitest";
 import { createDb, type DbHandle } from "./client";
-import { branches, staffMembers, users } from "./schema";
+import { branches, members, memberships, plans, staffMembers, users } from "./schema";
 import { DEMO, seed } from "./seed";
 import { withTenant } from "./tenant";
 import { inArray } from "drizzle-orm";
@@ -34,5 +34,23 @@ describe("demo data", () => {
       );
     expect(people).toHaveLength(4);
     expect(people.every((p) => p.phoneVerifiedAt)).toBe(true);
+
+    const [planRows, memberRows, membershipRows] = await withTenant(handle.db, DEMO.orgId, (tx) =>
+      Promise.all([
+        tx.select().from(plans),
+        tx.select().from(members),
+        tx.select().from(memberships),
+      ]),
+    );
+    expect(planRows.map((p) => p.name).sort()).toEqual([
+      "7-day trial",
+      "Monthly",
+      "Quarterly",
+      "Yearly",
+    ]);
+    expect(memberRows).toHaveLength(200);
+    expect(membershipRows).toHaveLength(180);
+    expect(membershipRows.filter((m) => m.status === "active").length).toBeGreaterThan(100);
+    expect(membershipRows.some((m) => m.status === "expired")).toBe(true);
   });
 });
