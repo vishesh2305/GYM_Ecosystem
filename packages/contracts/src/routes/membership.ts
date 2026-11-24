@@ -244,3 +244,13 @@ export const changeMembershipPlan = defineRoute({
   body: z.object({ planId: z.uuid() }),
   response: z.object({ previous: membership, current: membership, creditPaise: z.number().int() }),
 });
+
+export const cancelMembership = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/memberships/{membershipId}/cancel",
+  summary: "Cancel a membership with a reason (owner or manager)",
+  tag: "memberships",
+  params: membershipParams,
+  body: z.object({ reason: z.string().trim().min(2).max(200) }),
+  response: membership,
+});

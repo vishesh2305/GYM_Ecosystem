@@ -16,6 +16,7 @@ import {
 import { listConsents, recordConsent } from "./consents";
 import { getMe, updateMe } from "./me";
 import {
+  cancelMembership,
   changeMembershipPlan,
   freezeMembership,
   unfreezeMembership,
@@ -94,4 +95,5 @@ export const routes = {
   freezeMembership,
   unfreezeMembership,
   changeMembershipPlan,
+  cancelMembership,
 };

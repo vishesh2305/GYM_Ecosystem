@@ -34,6 +34,7 @@ const SAMPLE_BODIES: Record<string, object> = {
   enrolMember: { planId: "01930000-0000-7000-8000-0000000000ee" },
   freezeMembership: { days: 3 },
   changeMembershipPlan: { planId: "01930000-0000-7000-8000-0000000000ee" },
+  cancelMembership: { reason: "Cancelled by intruder" },
 };
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];

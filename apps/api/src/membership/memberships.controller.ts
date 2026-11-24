@@ -58,6 +58,17 @@ export class MembershipActionsController {
     return this.service.changePlan(tenant, params.membershipId, body.planId);
   }
 
+  @Post("cancel")
+  @HttpCode(200)
+  @Roles("owner", "manager")
+  cancel(
+    @CurrentTenant() tenant: TenantContext,
+    @Param(new ZodPipe(contracts.cancelMembership.params)) params: { membershipId: string },
+    @Body(new ZodPipe(contracts.cancelMembership.body)) body: { reason: string },
+  ): Promise<MembershipOut> {
+    return this.service.cancel(tenant, params.membershipId, body.reason);
+  }
+
   @Post("unfreeze")
   @HttpCode(200)
   @Roles("owner", "manager", "front_desk")

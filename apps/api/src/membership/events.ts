@@ -28,3 +28,13 @@ export const membershipPlanChanged = defineEvent(
     creditPaise: z.number().int(),
   }),
 );
+
+export const membershipExpired = defineEvent(
+  "membership.expired",
+  z.object({ membershipId: z.uuid(), memberId: z.uuid(), endDate: z.iso.date() }),
+);
+
+export const membershipCancelled = defineEvent(
+  "membership.cancelled",
+  z.object({ membershipId: z.uuid(), memberId: z.uuid(), reason: z.string() }),
+);

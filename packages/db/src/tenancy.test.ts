@@ -3,7 +3,7 @@ import { v7 } from "uuid";
 import { eq } from "drizzle-orm";
 import { createDb, type DbHandle } from "./client";
 import { branches, organisations, staffMembers, users } from "./schema";
-import { withTenant, withUser } from "./tenant";
+import { withSystem, withTenant, withUser } from "./tenant";
 
 let handle: DbHandle;
 const orgA = v7();
@@ -112,5 +112,24 @@ describe("tenant scope (withTenant)", () => {
         .returning(),
     );
     expect(changed).toEqual([]);
+  });
+});
+
+describe("system scope (withSystem) for background jobs", () => {
+  it("can list every organisation's id and time zone, and nothing more", async () => {
+    const { sql } = await import("drizzle-orm");
+    const ids = await withSystem(handle.db, (tx) =>
+      tx.select({ id: organisations.id, timezone: organisations.timezone }).from(organisations),
+    );
+    expect(ids.map((o) => o.id)).toEqual(expect.arrayContaining([orgA, orgB]));
+    const denied = (query: string) =>
+      withSystem(handle.db, (tx) => tx.execute(sql.raw(query))).catch((e: unknown) => {
+        throw (e as { cause?: unknown }).cause ?? e;
+      });
+    await expect(denied("select name from organisations")).rejects.toThrow(/permission denied/);
+    await expect(denied("select * from branches")).rejects.toThrow(/permission denied/);
+    await expect(denied("update organisations set timezone = 'UTC'")).rejects.toThrow(
+      /permission denied/,
+    );
   });
 });

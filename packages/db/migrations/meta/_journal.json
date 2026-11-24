@@ -176,6 +176,13 @@
       "when": 1795550323954,
       "tag": "0024_membership_freezes_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795550534163,
+      "tag": "0025_system_role",
+      "breakpoints": true
     }
   ]
 }

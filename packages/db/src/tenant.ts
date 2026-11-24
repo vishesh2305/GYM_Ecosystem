@@ -43,3 +43,15 @@ export async function withUser<T>(
     return fn(tx);
   });
 }
+
+/**
+ * Cross-tenant access for background jobs only (never for request handling). Runs as `app_system`, which may
+ * bypass RLS but is granted only what jobs need (today: reading organisation ids and time zones). Do per-tenant
+ * changes inside `withTenant` so RLS and tenant audit still apply.
+ */
+export async function withSystem<T>(db: Database, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`set local role app_system`);
+    return fn(tx);
+  });
+}

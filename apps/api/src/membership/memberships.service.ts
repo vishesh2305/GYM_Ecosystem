@@ -26,7 +26,7 @@ import { recordAudit } from "../platform/audit";
 import { appendEvent } from "../platform/events";
 import type { TenantContext } from "../tenancy/tenant.guard";
 import { DB } from "../tokens";
-import { membershipCreated, membershipPlanChanged } from "./events";
+import { membershipCancelled, membershipCreated, membershipPlanChanged } from "./events";
 import { MembersService } from "./members.service";
 
 export type MembershipOut = z.output<typeof routes.enrolMember.response>;
@@ -283,6 +283,25 @@ export class MembershipsService {
         endDate: addDays(current.endDate, -unusedDays),
         freezesUsed: usedDays === 0 ? current.freezesUsed - 1 : current.freezesUsed,
       };
+    });
+  }
+
+  /** Cancel any membership that is not already finished; an open pause is closed too. */
+  async cancel(tenant: TenantContext, membershipId: string, reason: string) {
+    return this.change(tenant, membershipId, "cancelled", async (tx, current, today) => {
+      await tx
+        .update(membershipFreezes)
+        .set({ endedOn: today })
+        .where(
+          and(eq(membershipFreezes.membershipId, membershipId), isNull(membershipFreezes.endedOn)),
+        );
+      await appendEvent(
+        tx,
+        membershipCancelled,
+        { membershipId, memberId: current.memberId, reason },
+        tenant.tenantId,
+      );
+      return { cancelledAt: new Date(), cancelReason: reason };
     });
   }
 

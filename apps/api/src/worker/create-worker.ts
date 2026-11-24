@@ -4,6 +4,7 @@ import { Redis } from "ioredis";
 import { pino } from "pino";
 import type { ApiEnv } from "../env";
 import type { EventEnvelope, EventHandler } from "../platform/events";
+import { runMembershipLifecycle } from "../membership/lifecycle";
 import { runMaintenance } from "../platform/maintenance";
 import { EVENTS_QUEUE, EventDispatcher } from "./event-dispatcher";
 import { OutboxRelay } from "./outbox-relay";
@@ -19,7 +20,7 @@ export interface WorkerOptions {
 
 export type WorkerHandle = Awaited<ReturnType<typeof createWorker>>;
 
-/** Background process: outbox relay, event handlers and hourly maintenance. */
+/** Background process: outbox relay, event handlers, hourly maintenance and membership upkeep. */
 export async function createWorker(env: ApiEnv, { handlers, autostart = true }: WorkerOptions) {
   const logger = pino({ level: env.LOG_LEVEL, base: { process: "worker" } });
   const db = createDb(env.DATABASE_URL, env.DB_POOL_MAX);
@@ -44,9 +45,20 @@ export async function createWorker(env: ApiEnv, { handlers, autostart = true }: 
     { every: HOUR },
     { name: "maintenance" },
   );
+  await maintenanceQueue.upsertJobScheduler(
+    "membership-lifecycle-hourly",
+    { every: HOUR },
+    { name: "membership-lifecycle" },
+  );
   const maintenance = new Worker(
     MAINTENANCE_QUEUE,
-    async () => logger.info(await runMaintenance(db.db), "maintenance done"),
+    async (job) => {
+      const result =
+        job.name === "membership-lifecycle"
+          ? await runMembershipLifecycle(db.db)
+          : await runMaintenance(db.db);
+      logger.info({ job: job.name, ...result }, "scheduled job done");
+    },
     { connection, autorun: false },
   );
 
