@@ -38,3 +38,24 @@ describe("a new membership's first status", () => {
     );
   });
 });
+
+import { unfreezeSplit } from "./membership";
+
+describe("unfreezing early", () => {
+  it("counts frozen days before today as used and the rest as unused", () => {
+    expect(unfreezeSplit({ startsOn: "2026-11-01", days: 10, today: "2026-11-04" })).toEqual({
+      usedDays: 3,
+      unusedDays: 7,
+    });
+  });
+  it("same-day unfreeze uses nothing; returning after the planned end uses everything", () => {
+    expect(unfreezeSplit({ startsOn: "2026-11-01", days: 10, today: "2026-11-01" })).toEqual({
+      usedDays: 0,
+      unusedDays: 10,
+    });
+    expect(unfreezeSplit({ startsOn: "2026-11-01", days: 10, today: "2026-11-30" })).toEqual({
+      usedDays: 10,
+      unusedDays: 0,
+    });
+  });
+});

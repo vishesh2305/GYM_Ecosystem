@@ -208,3 +208,28 @@ export const enrolMember = defineRoute({
   response: membership,
   status: 201,
 });
+
+const membershipParams = z.object({ orgId: z.uuid(), membershipId: z.uuid() });
+
+export const freezeMembership = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/memberships/{membershipId}/freeze",
+  summary:
+    "Pause an active membership for some days; its end date moves back by the same number of days",
+  tag: "memberships",
+  params: membershipParams,
+  body: z.object({
+    days: z.number().int().min(1).max(180),
+    reason: z.string().trim().max(200).optional(),
+  }),
+  response: membership,
+});
+
+export const unfreezeMembership = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/memberships/{membershipId}/unfreeze",
+  summary: "End a pause early; unused paused days come off the end date again",
+  tag: "memberships",
+  params: membershipParams,
+  response: membership,
+});

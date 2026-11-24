@@ -134,3 +134,25 @@ export const memberships = pgTable(
     check("memberships_dates_ordered", sql`${t.startDate} <= ${t.endDate}`),
   ],
 );
+
+/** A pause of a membership. While frozen, the membership's end date moves back by `days`. */
+export const membershipFreezes = pgTable(
+  "membership_freezes",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    membershipId: uuid("membership_id")
+      .notNull()
+      .references(() => memberships.id),
+    startsOn: date("starts_on", { mode: "string" }).notNull(),
+    plannedEndsOn: date("planned_ends_on", { mode: "string" }).notNull(),
+    endedOn: date("ended_on", { mode: "string" }),
+    days: smallint("days").notNull(),
+    reason: text("reason"),
+    createdBy: uuid("created_by"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("membership_freezes_membership_idx").on(t.tenantId, t.membershipId)],
+);

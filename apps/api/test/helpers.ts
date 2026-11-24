@@ -61,3 +61,55 @@ export async function signedInUser(
 /** A signed-in person whose session has passed two-step verification, as staff need. */
 export const signedInStaff = (...[app, db, options = {}]: Parameters<typeof signedInUser>) =>
   signedInUser(app, db, { ...options, amr: ["otp", "mfa"] });
+
+type Injectable = {
+  inject(opts: {
+    method: string;
+    url: string;
+    headers?: Record<string, string>;
+    payload?: object;
+  }): Promise<{
+    json(): any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    statusCode: number;
+  }>;
+};
+
+/** A gym with one branch, an owner (with two-step verification), one member and plan/sign-up shortcuts. */
+export async function gymWithMember(
+  app: Parameters<typeof signedInUser>[0] & Injectable,
+  db: Database,
+) {
+  const owner = await signedInStaff(app, db);
+  const call = (method: string, url: string, payload?: object) =>
+    app.inject({ method, url, headers: owner.headers, ...(payload && { payload }) });
+  const created = (
+    await call("POST", "/v1/orgs", { name: "Test Gym", branch: { name: "Main", city: "Pune" } })
+  ).json();
+  const base = `/v1/orgs/${created.organisation.id}`;
+  const member = (
+    await call("POST", `${base}/members`, { name: "Member", homeBranchId: created.branch.id })
+  ).json();
+  return {
+    owner,
+    base,
+    call,
+    branch: created.branch,
+    member,
+    plan: async (body: object = {}) =>
+      (
+        await call("POST", `${base}/plans`, {
+          name: "Monthly",
+          durationUnit: "month",
+          durationCount: 1,
+          pricePaise: 150_000,
+          joiningFeePaise: 50_000,
+          ...body,
+        })
+      ).json(),
+    enrol: (planId: string, startDate?: string) =>
+      call("POST", `${base}/members/${member.id}/memberships`, {
+        planId,
+        ...(startDate && { startDate }),
+      }),
+  };
+}

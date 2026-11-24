@@ -1,3 +1,4 @@
+import { daysBetween } from "./dates";
 export const MEMBERSHIP_STATUSES = [
   "pending",
   "trial",
@@ -37,4 +38,13 @@ export function initialStatus(input: {
 }): MembershipStatus {
   if (input.startDate > input.today) return "pending";
   return input.isTrial ? "trial" : "active";
+}
+
+/** A freeze covers `days` days from `startsOn`. Coming back on `today` uses the days before today. */
+export function unfreezeSplit(input: { startsOn: string; days: number; today: string }): {
+  usedDays: number;
+  unusedDays: number;
+} {
+  const usedDays = Math.min(input.days, Math.max(0, daysBetween(input.startsOn, input.today)));
+  return { usedDays, unusedDays: input.days - usedDays };
 }

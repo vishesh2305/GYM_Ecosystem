@@ -3,6 +3,7 @@ import { createDb, withTenant, type DbHandle } from "@gym/db";
 import {
   branches,
   members,
+  memberships,
   organisations,
   plans,
   staffInvites,
@@ -31,6 +32,7 @@ const SAMPLE_BODIES: Record<string, object> = {
   createMember: { name: "Intruder member", homeBranchId: "01930000-0000-7000-8000-0000000000ff" },
   updateMember: { name: "Renamed by intruder" },
   enrolMember: { planId: "01930000-0000-7000-8000-0000000000ee" },
+  freezeMembership: { days: 3 },
 };
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
@@ -53,6 +55,7 @@ async function snapshot() {
     invites: await tx.select().from(staffInvites),
     plans: await tx.select().from(plans),
     members: await tx.select().from(members),
+    memberships: await tx.select().from(memberships),
   }));
 }
 
@@ -121,6 +124,21 @@ beforeAll(async () => {
     })
   ).json().id;
 
+  await api.inject({
+    method: "PATCH",
+    url: `${base}/plans/${victim.planId}`,
+    headers: victimOwner.headers,
+    payload: { maxFreezes: 2, maxFreezeDays: 30 },
+  });
+  victim.membershipId = (
+    await api.inject({
+      method: "POST",
+      url: `${base}/members/${victim.memberId}/memberships`,
+      headers: victimOwner.headers,
+      payload: { planId: victim.planId },
+    })
+  ).json().id;
+
   const attacker = await signedInStaff(api, dbh.db, { name: "Attacker owner" });
   attackerHeaders = attacker.headers;
   attackerOrgId = (
@@ -177,5 +195,6 @@ describe("cross-tenant isolation matrix", () => {
     expect(after.invites.find((i) => i.id === victim.inviteId)?.revokedAt).toBeNull();
     expect(after.plans.map((p) => [p.name, p.pricePaise])).toEqual([["Victim plan", 150_000]]);
     expect(after.members.map((m) => m.name)).toEqual(["Victim member"]);
+    expect(after.memberships.map((m) => m.status)).toEqual(["active"]);
   });
 });

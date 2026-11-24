@@ -1,9 +1,25 @@
 import type { routes } from "@gym/contracts";
 import { withTenant, type DbHandle, type Tx } from "@gym/db";
-import { and, count, desc, eq, inArray } from "@gym/db/orm";
-import { memberships, organisations, plans } from "@gym/db/schema";
-import { initialStatus, LIVE_STATUSES, planEndDate, priceBreakdown, todayIn } from "@gym/domain";
-import { BadRequestException, ConflictException, Inject, Injectable } from "@nestjs/common";
+import { and, count, desc, eq, inArray, isNull } from "@gym/db/orm";
+import { membershipFreezes, memberships, organisations, plans } from "@gym/db/schema";
+import {
+  addDays,
+  canTransition,
+  initialStatus,
+  LIVE_STATUSES,
+  planEndDate,
+  priceBreakdown,
+  todayIn,
+  unfreezeSplit,
+  type MembershipStatus,
+} from "@gym/domain";
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import type { z } from "zod";
 import { recordAudit } from "../platform/audit";
 import { appendEvent } from "../platform/events";
@@ -159,5 +175,112 @@ export class MembershipsService {
       });
       return toMembership(row);
     });
+  }
+
+  /** Pause an active membership; its end date moves back by the frozen days. */
+  async freeze(
+    tenant: TenantContext,
+    membershipId: string,
+    input: { days: number; reason?: string | undefined },
+  ) {
+    return this.change(tenant, membershipId, "frozen", async (tx, current, today) => {
+      if (current.maxFreezes === 0)
+        throw new BadRequestException("This plan does not allow pausing");
+      if (current.freezesUsed >= current.maxFreezes) {
+        throw new BadRequestException(`This membership has used all ${current.maxFreezes} pauses`);
+      }
+      if (input.days > current.maxFreezeDays) {
+        throw new BadRequestException(
+          `A pause can last at most ${current.maxFreezeDays} days on this plan`,
+        );
+      }
+      await tx.insert(membershipFreezes).values({
+        tenantId: tenant.tenantId,
+        membershipId,
+        startsOn: today,
+        plannedEndsOn: addDays(today, input.days - 1),
+        days: input.days,
+        reason: input.reason,
+        createdBy: tenant.staffId,
+      });
+      return {
+        endDate: addDays(current.endDate, input.days),
+        freezesUsed: current.freezesUsed + 1,
+      };
+    });
+  }
+
+  /** End a pause early: unused days come off the end date; a same-day unfreeze also gives the pause back. */
+  async unfreeze(tenant: TenantContext, membershipId: string) {
+    return this.change(tenant, membershipId, "active", async (tx, current, today) => {
+      const [freeze] = await tx
+        .select()
+        .from(membershipFreezes)
+        .where(
+          and(eq(membershipFreezes.membershipId, membershipId), isNull(membershipFreezes.endedOn)),
+        );
+      if (!freeze) throw new ConflictException("This membership is not paused");
+      const { usedDays, unusedDays } = unfreezeSplit({
+        startsOn: freeze.startsOn,
+        days: freeze.days,
+        today,
+      });
+      await tx
+        .update(membershipFreezes)
+        .set({ endedOn: addDays(freeze.startsOn, Math.max(usedDays, 1) - 1) })
+        .where(eq(membershipFreezes.id, freeze.id));
+      return {
+        endDate: addDays(current.endDate, -unusedDays),
+        freezesUsed: usedDays === 0 ? current.freezesUsed - 1 : current.freezesUsed,
+      };
+    });
+  }
+
+  /** Load a membership the caller may see, check the status change is allowed, apply it, audit it. */
+  private async change(
+    tenant: TenantContext,
+    membershipId: string,
+    to: MembershipStatus,
+    apply: (
+      tx: Tx,
+      current: typeof memberships.$inferSelect,
+      today: string,
+    ) => Promise<Partial<typeof memberships.$inferInsert>>,
+  ): Promise<MembershipOut> {
+    const current = await this.findVisible(tenant, membershipId);
+    if (!canTransition(current.status, to)) {
+      throw new ConflictException(`A ${current.status} membership cannot become ${to}`);
+    }
+    return withTenant(this.db.db, tenant.tenantId, async (tx) => {
+      const changes = await apply(tx, current, await orgToday(tx));
+      const [row] = await tx
+        .update(memberships)
+        .set({ ...changes, status: to })
+        .where(and(eq(memberships.id, membershipId), eq(memberships.status, current.status)))
+        .returning();
+      if (!row)
+        throw new ConflictException(
+          "The membership was changed at the same time; please try again",
+        );
+      await recordAudit(tx, {
+        tenantId: tenant.tenantId,
+        actorType: "staff",
+        actorId: tenant.staffId,
+        action: `membership.${to}`,
+        entityType: "membership",
+        entityId: membershipId,
+        data: { from: current.status, endDate: row.endDate },
+      });
+      return toMembership(row);
+    });
+  }
+
+  private async findVisible(tenant: TenantContext, membershipId: string) {
+    const [row] = await withTenant(this.db.db, tenant.tenantId, (tx) =>
+      tx.select().from(memberships).where(eq(memberships.id, membershipId)),
+    );
+    if (!row) throw new NotFoundException("Membership not found");
+    await this.members.find(tenant, row.memberId); // 404 if the member is outside the caller's branches
+    return row;
   }
 }
