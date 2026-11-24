@@ -18,4 +18,8 @@ describe("encrypt / decrypt (AES-256-GCM)", () => {
     expect(() => decrypt(sealed.toString("base64"), key)).toThrow();
     expect(() => decrypt(encrypt("secret", key), randomBytes(32))).toThrow();
   });
+
+  it("rejects values too short to hold an IV and a full tag", () => {
+    expect(() => decrypt(Buffer.alloc(20).toString("base64"), key)).toThrow(/too short/);
+  });
 });
