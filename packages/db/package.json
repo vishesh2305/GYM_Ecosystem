@@ -14,7 +14,8 @@
     "test": "vitest run --coverage",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:check": "drizzle-kit check"
+    "db:check": "drizzle-kit check",
+    "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
@@ -24,6 +25,7 @@
   "devDependencies": {
     "@testcontainers/postgresql": "^12.2.2",
     "@types/pg": "^8.23.1",
-    "drizzle-kit": "^0.31.11"
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15"
   }
 }

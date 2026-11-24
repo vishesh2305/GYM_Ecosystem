@@ -18,6 +18,7 @@
     "dev:down": "docker compose down",
     "db:migrate": "pnpm --filter @gym/db db:migrate",
     "db:generate": "pnpm --filter @gym/db db:generate",
+    "db:seed": "pnpm --filter @gym/db db:seed",
     "prepare": "husky"
   },
   "devDependencies": {

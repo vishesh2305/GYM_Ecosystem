@@ -15,6 +15,13 @@ Plans: `~/gym-platform-plan.md` (product) and `~/gym-platform-build-plan.md` (bu
 | `cp .env.example .env`                | Local configuration (never commit `.env`)                                                                  |
 | `pnpm --filter @gym/api keys >> .env` | Create the token signing key; also set `AUTH_SECRET` and `AUTH_ENCRYPTION_KEY` (`openssl rand -base64 32`) |
 | `pnpm dev:up` / `pnpm dev:down`       | Start / stop Postgres (54320), Valkey (63790), Mailpit (UI on 8025)                                        |
+| `pnpm db:migrate`                     | Apply database migrations to the database in `.env`                                                        |
+| `pnpm db:generate`                    | Create a migration from schema changes in `packages/db/src/schema`                                         |
+| `pnpm db:seed`                        | Load the demo gym "Demo Fitness" (2 branches; staff sign in with +91 99000 00001 to 00004)                 |
+| `pnpm --filter @gym/api dev`          | Run the API with reload on http://localhost:3000 (docs at `/v1/docs.json`)                                 |
+| `pnpm --filter @gym/api dev:worker`   | Run the background worker (outbox relay, event handlers, maintenance)                                      |
+| `pnpm build`                          | Production build (`apps/api/dist`)                                                                         |
+| `pnpm --filter @gym/api openapi`      | Regenerate `apps/api/openapi.json` after contract changes                                                  |
 | `pnpm check`                          | Lint + type-check + tests (with coverage gates) for every package                                          |
 | `pnpm format`                         | Prettier                                                                                                   |
 
