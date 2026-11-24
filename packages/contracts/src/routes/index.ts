@@ -15,6 +15,7 @@ import {
 } from "./auth";
 import {
   getInvoice,
+  getInvoicePdf,
   getMemberBalance,
   listInvoicePayments,
   listMemberInvoices,
@@ -118,4 +119,5 @@ export const routes = {
   startOnlinePayment,
   razorpayWebhook,
   refundPayment,
+  getInvoicePdf,
 };

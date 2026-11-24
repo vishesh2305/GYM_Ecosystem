@@ -2,7 +2,9 @@ import type { routes } from "@gym/contracts";
 import { withTenant, type DbHandle, type Tx } from "@gym/db";
 import { and, asc, desc, eq, inArray, sql } from "@gym/db/orm";
 import { invoiceLines, invoices, ledgerEntries } from "@gym/db/schema";
-import { Controller, Get, Inject, NotFoundException, Param } from "@nestjs/common";
+import { Controller, Get, Header, Inject, NotFoundException, Param, Res } from "@nestjs/common";
+import type { FastifyReply } from "fastify";
+import { renderInvoicePdf } from "./invoice-pdf";
 import type { z } from "zod";
 import { contracts } from "../common/contracts";
 import { ZodPipe } from "../common/zod.pipe";
@@ -10,7 +12,7 @@ import { MembersService } from "../membership/members.service";
 import { CurrentTenant, Roles, TenantScoped, type TenantContext } from "../tenancy/tenant.guard";
 import { DB } from "../tokens";
 
-type InvoiceOut = z.output<typeof routes.getInvoice.response>;
+export type InvoiceOut = z.output<typeof routes.getInvoice.response>;
 
 async function withLines(tx: Tx, rows: (typeof invoices.$inferSelect)[]): Promise<InvoiceOut[]> {
   const lines = rows.length
@@ -97,6 +99,21 @@ export class InvoicesController {
     const [out] = await withTenant(this.db.db, tenant.tenantId, (tx) => withLines(tx, [row]));
     if (!out) throw new NotFoundException("Invoice not found");
     return out;
+  }
+
+  @Get("invoices/:invoiceId/pdf")
+  @Header("content-type", "application/pdf")
+  async pdf(
+    @CurrentTenant() tenant: TenantContext,
+    @Param(new ZodPipe(contracts.getInvoicePdf.params)) params: { invoiceId: string },
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<Buffer> {
+    const invoice = await this.get(tenant, params);
+    void reply.header(
+      "content-disposition",
+      `inline; filename="${invoice.number.replaceAll("/", "-")}.pdf"`,
+    );
+    return renderInvoicePdf(invoice);
   }
 
   @Get("members/:memberId/balance")

@@ -147,3 +147,12 @@ export const refundPayment = defineRoute({
   }),
   status: 201,
 });
+
+export const getInvoicePdf = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/invoices/{invoiceId}/pdf",
+  summary: "Printable PDF of an invoice or credit note (application/pdf)",
+  tag: "billing",
+  params: z.object({ orgId: z.uuid(), invoiceId: z.uuid() }),
+  response: z.unknown(),
+});

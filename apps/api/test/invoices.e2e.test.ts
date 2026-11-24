@@ -141,6 +141,17 @@ describe("invoices for membership sales", () => {
     expect(
       (await g.call("GET", `${g.base}/invoices/01930000-0000-7000-8000-00000000abcd`)).statusCode,
     ).toBe(404);
+    const invoiceId = (inv as unknown as { id: string }).id;
+    const pdf = await api.inject({
+      method: "GET",
+      url: `${g.base}/invoices/${invoiceId}/pdf`,
+      headers: g.owner.headers,
+    });
+    expect(pdf.statusCode).toBe(200);
+    expect(pdf.headers["content-type"]).toBe("application/pdf");
+    expect(pdf.headers["content-disposition"]).toContain(`${inv?.number.replaceAll("/", "-")}.pdf`);
+    expect(pdf.rawPayload.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(pdf.rawPayload.toString("latin1")).toContain(inv?.number ?? "missing");
   });
 
   it("trainers cannot see money", async () => {
