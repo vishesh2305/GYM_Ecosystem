@@ -47,7 +47,10 @@ export async function createApp(env: ApiEnv, options: CreateAppOptions = {}) {
   const app = await NestFactory.create(
     AppModule.forRoot(env, redis, options.modules),
     adapter,
-    env.NODE_ENV === "test" ? { logger: false } : { bufferLogs: true },
+    // abortOnError false: a wiring error throws (and is reported) instead of killing the process silently.
+    env.NODE_ENV === "test"
+      ? { logger: false, abortOnError: false }
+      : { bufferLogs: true, abortOnError: false },
   );
 
   app.setGlobalPrefix("v1");

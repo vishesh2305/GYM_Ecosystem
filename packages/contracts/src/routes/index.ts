@@ -17,6 +17,13 @@ import { listConsents, recordConsent } from "./consents";
 import { getMe, updateMe } from "./me";
 import { health, ready } from "./system";
 import {
+  acceptInvite,
+  inviteStaff,
+  listInvites,
+  listStaff,
+  removeStaff,
+  revokeInvite,
+  updateStaff,
   createBranch,
   createOrganisation,
   getOrganisation,
@@ -54,4 +61,11 @@ export const routes = {
   listBranches,
   createBranch,
   updateBranch,
+  inviteStaff,
+  listInvites,
+  revokeInvite,
+  acceptInvite,
+  listStaff,
+  updateStaff,
+  removeStaff,
 };

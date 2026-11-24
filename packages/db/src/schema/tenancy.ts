@@ -1,4 +1,4 @@
-import { index, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { id, softDelete, timestamps } from "../columns";
 import { users } from "./identity";
@@ -65,4 +65,31 @@ export const staffMembers = pgTable(
     unique("staff_members_tenant_user").on(t.tenantId, t.userId),
     index("staff_members_user_idx").on(t.userId),
   ],
+);
+
+/** An invitation to join an organisation's staff. The token is `<orgId>.<secret>`; only its SHA-256 is stored. */
+export const staffInvites = pgTable(
+  "staff_invites",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    role: text("role", { enum: STAFF_ROLES }).notNull(),
+    branchIds: uuid("branch_ids")
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
+    channel: text("channel", { enum: ["sms", "email"] }).notNull(),
+    /** E.164 phone or lower-cased email. */
+    destination: text("destination").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    acceptedBy: uuid("accepted_by"),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    invitedBy: uuid("invited_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("staff_invites_tenant_idx").on(t.tenantId)],
 );

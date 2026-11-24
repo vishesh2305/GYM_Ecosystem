@@ -120,3 +120,111 @@ export const updateBranch = defineRoute({
   body: branchInput.partial(),
   response: branch,
 });
+
+const inviteParams = z.object({ orgId: z.uuid(), inviteId: z.uuid() });
+const staffParams = z.object({ orgId: z.uuid(), staffId: z.uuid() });
+const inviteFields = { role: staffRole, branchIds: z.array(z.uuid()).max(100).default([]) };
+
+export const staffInvite = z.object({
+  id: z.uuid(),
+  role: staffRole,
+  branchIds: z.array(z.uuid()),
+  channel: z.enum(["sms", "email"]),
+  destination: z.string(),
+  expiresAt: z.iso.datetime(),
+});
+
+export const staffMember = z.object({
+  id: z.uuid(),
+  userId: z.uuid(),
+  name: z.string().nullable(),
+  phone: z.string().nullable(),
+  email: z.string().nullable(),
+  role: staffRole,
+  branchIds: z.array(z.uuid()),
+  status: z.enum(["active", "suspended"]),
+  joinedAt: z.iso.datetime(),
+});
+
+export const inviteStaff = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/invites",
+  summary:
+    "Invite someone to the staff by SMS or email (owners: any role; managers: front desk and trainers)",
+  tag: "staff",
+  params: orgParams,
+  body: z.discriminatedUnion("channel", [
+    z.object({
+      channel: z.literal("sms"),
+      phone: z.string().trim().min(3).max(32),
+      ...inviteFields,
+    }),
+    z.object({ channel: z.literal("email"), email: z.email().max(254), ...inviteFields }),
+  ]),
+  response: staffInvite,
+  status: 201,
+});
+
+export const listInvites = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/invites",
+  summary: "Invites that are still waiting to be accepted",
+  tag: "staff",
+  params: orgParams,
+  response: z.array(staffInvite),
+});
+
+export const revokeInvite = defineRoute({
+  method: "DELETE",
+  path: "/v1/orgs/{orgId}/invites/{inviteId}",
+  summary: "Cancel an invite",
+  tag: "staff",
+  params: inviteParams,
+  response: z.undefined(),
+  status: 204,
+});
+
+export const acceptInvite = defineRoute({
+  method: "POST",
+  path: "/v1/invites/accept",
+  summary: "Join a gym's staff with an invite sent to my phone or email",
+  tag: "staff",
+  body: z.object({ token: z.string().min(10).max(200) }),
+  response: organisation,
+});
+
+export const listStaff = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/staff",
+  summary: "Everyone on the staff (owners and managers)",
+  tag: "staff",
+  params: orgParams,
+  response: z.array(staffMember),
+});
+
+export const updateStaff = defineRoute({
+  method: "PATCH",
+  path: "/v1/orgs/{orgId}/staff/{staffId}",
+  summary:
+    "Change a staff member's role, branches or status (owner only; a gym always keeps one owner)",
+  tag: "staff",
+  params: staffParams,
+  body: z
+    .object({
+      role: staffRole,
+      branchIds: z.array(z.uuid()).max(100),
+      status: z.enum(["active", "suspended"]),
+    })
+    .partial(),
+  response: staffMember,
+});
+
+export const removeStaff = defineRoute({
+  method: "DELETE",
+  path: "/v1/orgs/{orgId}/staff/{staffId}",
+  summary: "Remove someone from the staff (owner only; a gym always keeps one owner)",
+  tag: "staff",
+  params: staffParams,
+  response: z.undefined(),
+  status: 204,
+});

@@ -40,11 +40,16 @@ export const randomIp = () =>
 export async function signedInUser(
   app: { get<T>(token: abstract new (...args: never[]) => T): T },
   db: Database,
-  options: { name?: string; amr?: string[] } = {},
+  options: { name?: string; amr?: string[]; phone?: string; email?: string } = {},
 ) {
+  const verified = new Date();
   const [user] = await db
     .insert(users)
-    .values({ name: options.name ?? "Test person" })
+    .values({
+      name: options.name ?? "Test person",
+      ...(options.phone && { phone: options.phone, phoneVerifiedAt: verified }),
+      ...(options.email && { email: options.email, emailVerifiedAt: verified }),
+    })
     .returning();
   if (!user) throw new Error("user insert returned nothing");
   const tokens = await app

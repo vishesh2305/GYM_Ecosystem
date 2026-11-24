@@ -53,6 +53,6 @@ import { TokenService } from "./token.service";
           : new ConsoleEmailSender(),
     },
   ],
-  exports: [TokenService, SessionService],
+  exports: [TokenService, SessionService, SMS_SENDER, EMAIL_SENDER],
 })
 export class AuthModule {}
