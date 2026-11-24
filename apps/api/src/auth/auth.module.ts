@@ -1,13 +1,14 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
+import { createTransport } from "nodemailer";
+import type { ApiEnv } from "../env";
+import { EMAIL_SENDER, ENV, SMS_SENDER } from "../tokens";
 import { AuthController } from "./auth.controller";
 import { AuthGuard } from "./auth.guard";
 import { MeController } from "./me.controller";
 import { OtpController } from "./otp.controller";
 import { OtpService } from "./otp.service";
-import { ConsoleSmsSender } from "./senders";
-import type { ApiEnv } from "../env";
-import { ENV, SMS_SENDER } from "../tokens";
+import { ConsoleEmailSender, ConsoleSmsSender, SmtpEmailSender } from "./senders";
 import { SessionService } from "./session.service";
 import { TokenService } from "./token.service";
 
@@ -28,6 +29,14 @@ import { TokenService } from "./token.service";
             return new ConsoleSmsSender();
         }
       },
+    },
+    {
+      provide: EMAIL_SENDER,
+      inject: [ENV],
+      useFactory: (env: ApiEnv) =>
+        env.EMAIL_PROVIDER === "smtp" && env.SMTP_URL
+          ? new SmtpEmailSender(createTransport(env.SMTP_URL), env.EMAIL_FROM)
+          : new ConsoleEmailSender(),
     },
   ],
   exports: [TokenService, SessionService],

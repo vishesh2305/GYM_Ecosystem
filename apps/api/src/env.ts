@@ -57,6 +57,10 @@ export const apiEnvSchema = baseEnvSchema
     DEFAULT_PHONE_REGION: z.string().length(2).default("IN"),
     /** "console" prints codes to the log: development and tests only. Real providers arrive in step A14. */
     SMS_PROVIDER: z.enum(["console"]).default("console"),
+    /** "console" prints emails to the log (development/tests); "smtp" sends through SMTP_URL. */
+    EMAIL_PROVIDER: z.enum(["console", "smtp"]).default("console"),
+    SMTP_URL: z.url({ protocol: /^smtps?$/ }).optional(),
+    EMAIL_FROM: z.string().default("Gym Platform <no-reply@localhost>"),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === "production" && env.SMS_PROVIDER === "console") {
@@ -64,6 +68,20 @@ export const apiEnvSchema = baseEnvSchema
         code: "custom",
         path: ["SMS_PROVIDER"],
         message: "the console sender cannot be used in production",
+      });
+    }
+    if (env.NODE_ENV === "production" && env.EMAIL_PROVIDER === "console") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["EMAIL_PROVIDER"],
+        message: "the console sender cannot be used in production",
+      });
+    }
+    if (env.EMAIL_PROVIDER === "smtp" && !env.SMTP_URL) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["SMTP_URL"],
+        message: "required when EMAIL_PROVIDER is smtp",
       });
     }
   });

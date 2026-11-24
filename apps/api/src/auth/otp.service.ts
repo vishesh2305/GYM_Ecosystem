@@ -14,11 +14,12 @@ import { v7 } from "uuid";
 import type { ApiEnv } from "../env";
 import { recordAudit } from "../platform/audit";
 import { appendEvent } from "../platform/events";
-import { DB, ENV, SMS_SENDER } from "../tokens";
+import { DB, EMAIL_SENDER, ENV, SMS_SENDER } from "../tokens";
 import { userRegistered } from "./events";
-import type { SmsSender } from "./senders";
+import type { EmailSender, SmsSender } from "./senders";
 
-export type OtpRequest = { channel: "sms"; phone: string };
+export type OtpRequest = { channel: "sms"; phone: string } | { channel: "email"; email: string };
+type Channel = OtpRequest["channel"];
 
 const tooMany = (message: string) => new HttpException(message, 429);
 
@@ -29,13 +30,17 @@ export class OtpService {
     @Inject(DB) private readonly db: DbHandle,
     @Inject(ENV) private readonly env: ApiEnv,
     @Inject(SMS_SENDER) private readonly sms: SmsSender,
+    @Inject(EMAIL_SENDER) private readonly email: EmailSender,
   ) {}
 
   async request(
     input: OtpRequest,
     ip: string,
   ): Promise<{ challengeId: string; expiresAt: string }> {
-    const destination = normalizePhone(input.phone, this.env.DEFAULT_PHONE_REGION as CountryCode);
+    const destination =
+      input.channel === "sms"
+        ? normalizePhone(input.phone, this.env.DEFAULT_PHONE_REGION as CountryCode)
+        : input.email.trim().toLowerCase();
     if (!destination) throw new BadRequestException("Enter a valid mobile number");
 
     const since = new Date(Date.now() - this.env.OTP_WINDOW_SECONDS * 1000);
@@ -44,7 +49,7 @@ export class OtpService {
       .from(otpChallenges)
       .where(and(eq(otpChallenges.destination, destination), gt(otpChallenges.createdAt, since)));
     if ((recent?.n ?? 0) >= this.env.OTP_MAX_PER_WINDOW) {
-      throw tooMany("Too many codes were requested for this number. Please try again later.");
+      throw tooMany("Too many codes were requested. Please try again later.");
     }
 
     const id = v7();
@@ -60,11 +65,11 @@ export class OtpService {
     });
 
     const minutes = Math.max(1, Math.round(this.env.OTP_TTL_SECONDS / 60));
+    const text = `${code} is your Gym Platform sign-in code. It expires in ${minutes} minutes. Never share it.`;
     try {
-      await this.sms.send(
-        destination,
-        `${code} is your Gym Platform sign-in code. It expires in ${minutes} minutes. Never share it.`,
-      );
+      if (input.channel === "sms") await this.sms.send(destination, text);
+      else
+        await this.email.send({ to: destination, subject: "Your Gym Platform sign-in code", text });
     } catch {
       throw new ServiceUnavailableException(
         "We could not send the code right now. Please try again.",
@@ -117,7 +122,7 @@ export class OtpService {
     if (!claimed.length) throw expired();
 
     return this.db.db.transaction(async (tx) => {
-      const result = await this.findOrCreateByPhone(tx, challenge.destination);
+      const result = await this.findOrCreate(tx, challenge.channel, challenge.destination);
       await recordAudit(tx, {
         actorType: "member",
         actorId: result.userId,
@@ -131,20 +136,30 @@ export class OtpService {
     });
   }
 
-  private async findOrCreateByPhone(tx: Tx, phone: string) {
+  /** The code proved control of this phone or email, so it is marked verified. */
+  private async findOrCreate(tx: Tx, channel: Channel, destination: string) {
+    const isSms = channel === "sms";
     const [created] = await tx
       .insert(users)
-      .values({ phone, phoneVerifiedAt: new Date() })
-      .onConflictDoNothing({ target: users.phone })
+      .values(
+        isSms
+          ? { phone: destination, phoneVerifiedAt: new Date() }
+          : { email: destination, emailVerifiedAt: new Date() },
+      )
+      .onConflictDoNothing()
       .returning({ id: users.id });
     if (created) {
-      await appendEvent(tx, userRegistered, { userId: created.id, via: "sms" }, null);
+      await appendEvent(tx, userRegistered, { userId: created.id, via: channel }, null);
       return { userId: created.id, isNewUser: true };
     }
     const [existing] = await tx
       .update(users)
-      .set({ phoneVerifiedAt: sql`coalesce(${users.phoneVerifiedAt}, now())` })
-      .where(eq(users.phone, phone))
+      .set(
+        isSms
+          ? { phoneVerifiedAt: sql`coalesce(${users.phoneVerifiedAt}, now())` }
+          : { emailVerifiedAt: sql`coalesce(${users.emailVerifiedAt}, now())` },
+      )
+      .where(isSms ? eq(users.phone, destination) : eq(users.email, destination))
       .returning({ id: users.id });
     if (!existing) throw new Error("user vanished during sign-in");
     return { userId: existing.id, isNewUser: false };

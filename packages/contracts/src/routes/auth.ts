@@ -67,10 +67,11 @@ export const revokeSession = defineRoute({
 export const requestOtp = defineRoute({
   method: "POST",
   path: "/v1/auth/otp/request",
-  summary: "Send a one-time sign-in code",
+  summary: "Send a one-time sign-in code by SMS or email",
   tag: "auth",
   body: z.discriminatedUnion("channel", [
     z.object({ channel: z.literal("sms"), phone: z.string().trim().min(3).max(32) }),
+    z.object({ channel: z.literal("email"), email: z.email().max(254) }),
   ]),
   response: z.object({ challengeId: z.uuid(), expiresAt: z.iso.datetime() }),
   status: 202,
