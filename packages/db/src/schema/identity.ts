@@ -1,4 +1,4 @@
-import { index, pgTable, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, pgTable, smallint, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "../columns";
 
 const tz = { withTimezone: true } as const;
@@ -73,4 +73,23 @@ export const otpChallenges = pgTable(
     createdAt: timestamp("created_at", tz).notNull().defaultNow(),
   },
   (t) => [index("otp_challenges_destination_idx").on(t.destination, t.createdAt)],
+);
+
+/** A Google or Apple account linked to a user. `subject` is the provider's stable user id. */
+export const authIdentities = pgTable(
+  "auth_identities",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider", { enum: ["google", "apple"] }).notNull(),
+    subject: text("subject").notNull(),
+    email: text("email"),
+    createdAt: timestamp("created_at", tz).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("auth_identities_provider_subject").on(t.provider, t.subject),
+    index("auth_identities_user_idx").on(t.userId),
+  ],
 );

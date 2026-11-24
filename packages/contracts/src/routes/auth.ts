@@ -89,3 +89,18 @@ export const verifyOtp = defineRoute({
   }),
   response: tokenPair.extend({ isNewUser: z.boolean() }),
 });
+
+export const signInWithProvider = defineRoute({
+  method: "POST",
+  path: "/v1/auth/social/{provider}",
+  summary: "Sign in with a Google or Apple ID token (creates or links the account)",
+  tag: "auth",
+  params: z.object({ provider: z.enum(["google", "apple"]) }),
+  body: z.object({
+    idToken: z.string().min(1).max(4096),
+    nonce: z.string().min(8).max(128),
+    name: z.string().trim().min(1).max(100).optional(),
+    deviceName: z.string().trim().max(100).optional(),
+  }),
+  response: tokenPair.extend({ isNewUser: z.boolean() }),
+});

@@ -19,20 +19,23 @@ const ed25519Jwk = z
     ),
   );
 
+/** Comma-separated list → array of trimmed, non-empty strings. */
+const csv = z
+  .string()
+  .default("")
+  .transform((s) =>
+    s
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean),
+  );
+
 export const apiEnvSchema = baseEnvSchema
   .extend({
     HOST: z.string().default("0.0.0.0"),
     PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     /** Comma-separated list of allowed browser origins. Empty = no cross-origin access. */
-    CORS_ORIGINS: z
-      .string()
-      .default("")
-      .transform((s) =>
-        s
-          .split(",")
-          .map((o) => o.trim())
-          .filter(Boolean),
-      ),
+    CORS_ORIGINS: csv,
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
     RATE_LIMIT_WINDOW: z.string().default("1 minute"),
     BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(1_048_576),
@@ -61,6 +64,14 @@ export const apiEnvSchema = baseEnvSchema
     EMAIL_PROVIDER: z.enum(["console", "smtp"]).default("console"),
     SMTP_URL: z.url({ protocol: /^smtps?$/ }).optional(),
     EMAIL_FROM: z.string().default("Gym Platform <no-reply@localhost>"),
+    /** OAuth client ids allowed as token audience (web, Android, iOS). Empty = sign-in with Google is off. */
+    GOOGLE_CLIENT_IDS: csv,
+    GOOGLE_JWKS_URL: z.url().default("https://www.googleapis.com/oauth2/v3/certs"),
+    GOOGLE_ISSUERS: csv.default(["https://accounts.google.com", "accounts.google.com"]),
+    /** App bundle id / Services id. Empty = sign-in with Apple is off. */
+    APPLE_CLIENT_IDS: csv,
+    APPLE_JWKS_URL: z.url().default("https://appleid.apple.com/auth/keys"),
+    APPLE_ISSUERS: csv.default(["https://appleid.apple.com"]),
   })
   .superRefine((env, ctx) => {
     if (env.NODE_ENV === "production" && env.SMS_PROVIDER === "console") {

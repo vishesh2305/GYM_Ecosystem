@@ -4,6 +4,7 @@ import {
   requestOtp,
   revokeSession,
   signOut,
+  signInWithProvider,
   signOutEverywhere,
   verifyOtp,
 } from "./auth";
@@ -16,6 +17,7 @@ export const routes = {
   ready,
   requestOtp,
   verifyOtp,
+  signInWithProvider,
   refreshSession,
   signOut,
   signOutEverywhere,
