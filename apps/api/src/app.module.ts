@@ -1,6 +1,7 @@
 import { Module, type DynamicModule, type Type } from "@nestjs/common";
 import type { Redis } from "ioredis";
 import { AuthModule } from "./auth/auth.module";
+import { BillingModule } from "./billing/billing.module";
 import { DocsController } from "./docs.controller";
 import type { ApiEnv } from "./env";
 import { HealthController } from "./health/health.controller";
@@ -20,6 +21,7 @@ export class AppModule {
         AuthModule,
         TenancyModule,
         MembershipModule,
+        BillingModule,
         ...modules,
       ],
       controllers: [HealthController, DocsController],

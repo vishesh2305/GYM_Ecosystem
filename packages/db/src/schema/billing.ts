@@ -1,7 +1,20 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  date,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  smallint,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { id } from "../columns";
-import { organisations } from "./tenancy";
+import { members, memberships } from "./membership";
+import { branches, organisations } from "./tenancy";
 
 export const LEDGER_ACCOUNTS = [
   "receivable",
@@ -44,4 +57,86 @@ export const ledgerEntries = pgTable(
       sql`(${t.debitPaise} > 0 and ${t.creditPaise} = 0) or (${t.creditPaise} > 0 and ${t.debitPaise} = 0)`,
     ),
   ],
+);
+
+/** Gap-free numbering per gym, document kind and financial year (the row is locked while a number is taken). */
+export const invoiceSeries = pgTable(
+  "invoice_series",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["invoice", "credit_note"] }).notNull(),
+    fiscalYear: text("fiscal_year").notNull(),
+    lastNumber: integer("last_number").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.kind, t.fiscalYear] })],
+);
+
+/** A GST tax invoice or credit note. Amounts in paise. Seller details are copied at issue time. */
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["invoice", "credit_note"] }).notNull(),
+    number: text("number").notNull(),
+    status: text("status", { enum: ["issued", "partially_paid", "paid", "void"] })
+      .notNull()
+      .default("issued"),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id),
+    membershipId: uuid("membership_id").references(() => memberships.id),
+    branchId: uuid("branch_id")
+      .notNull()
+      .references(() => branches.id),
+    /** For a credit note: the invoice it reduces. */
+    relatedInvoiceId: uuid("related_invoice_id"),
+    issueDate: date("issue_date", { mode: "string" }).notNull(),
+    dueDate: date("due_date", { mode: "string" }).notNull(),
+    sellerName: text("seller_name").notNull(),
+    sellerGstin: text("seller_gstin"),
+    buyerName: text("buyer_name").notNull(),
+    placeOfSupply: text("place_of_supply"),
+    taxablePaise: integer("taxable_paise").notNull(),
+    cgstPaise: integer("cgst_paise").notNull(),
+    sgstPaise: integer("sgst_paise").notNull(),
+    igstPaise: integer("igst_paise").notNull().default(0),
+    totalPaise: integer("total_paise").notNull(),
+    paidPaise: integer("paid_paise").notNull().default(0),
+    remindersSent: smallint("reminders_sent").notNull().default(0),
+    lastReminderAt: timestamp("last_reminder_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("invoices_tenant_number").on(t.tenantId, t.number),
+    index("invoices_member_idx").on(t.tenantId, t.memberId),
+    index("invoices_status_due_idx").on(t.tenantId, t.status, t.dueDate),
+    check(
+      "invoices_amounts",
+      sql`${t.totalPaise} = ${t.taxablePaise} + ${t.cgstPaise} + ${t.sgstPaise} + ${t.igstPaise}`,
+    ),
+  ],
+);
+
+export const invoiceLines = pgTable(
+  "invoice_lines",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id),
+    description: text("description").notNull(),
+    /** Services Accounting Code. Default is for fitness centre services; confirm with the gym's accountant. */
+    sacCode: text("sac_code").notNull(),
+    taxablePaise: integer("taxable_paise").notNull(),
+    gstRateBps: smallint("gst_rate_bps").notNull(),
+  },
+  (t) => [index("invoice_lines_invoice_idx").on(t.invoiceId)],
 );

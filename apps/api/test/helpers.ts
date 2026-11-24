@@ -20,7 +20,10 @@ export function rawTestEnv(overrides: Record<string, string> = {}): Record<strin
   return {
     NODE_ENV: "test",
     LOG_LEVEL: "fatal",
-    DATABASE_URL: inject("databaseUrl"),
+    // Each test file has its own database and queue prefix (see setup-db.ts).
+    DATABASE_URL:
+      (globalThis as { __testDatabaseUrl?: string }).__testDatabaseUrl ?? inject("databaseUrl"),
+    QUEUE_PREFIX: (globalThis as { __testQueuePrefix?: string }).__testQueuePrefix ?? "bull",
     REDIS_URL: inject("redisUrl"),
     CORS_ORIGINS: "https://app.gym.test",
     ...secrets,

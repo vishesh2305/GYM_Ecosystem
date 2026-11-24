@@ -13,6 +13,7 @@ import {
   signOutEverywhere,
   verifyOtp,
 } from "./auth";
+import { getInvoice, getMemberBalance, listMemberInvoices } from "./billing";
 import { listConsents, recordConsent } from "./consents";
 import { getMe, updateMe } from "./me";
 import {
@@ -100,4 +101,7 @@ export const routes = {
   cancelMembership,
   createMemberImport,
   getMemberImport,
+  listMemberInvoices,
+  getInvoice,
+  getMemberBalance,
 };

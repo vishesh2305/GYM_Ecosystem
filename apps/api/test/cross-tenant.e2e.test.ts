@@ -1,5 +1,6 @@
 import { routes, type Route } from "@gym/contracts";
 import { createDb, withTenant, type DbHandle } from "@gym/db";
+import { eq } from "@gym/db/orm";
 import {
   branches,
   members,
@@ -11,6 +12,7 @@ import {
 } from "@gym/db/schema";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
+import { issueMembershipInvoice } from "../src/billing/invoicing";
 import type { ConsoleSmsSender } from "../src/auth/senders";
 import { SMS_SENDER } from "../src/tokens";
 import { signedInStaff, testEnv } from "./helpers";
@@ -145,6 +147,27 @@ beforeAll(async () => {
       payload: { planId: victim.planId },
     })
   ).json().id;
+
+  const sale = await withTenant(dbh.db, victim.orgId ?? "", async (tx) => {
+    const [m] = await tx
+      .select()
+      .from(memberships)
+      .where(eq(memberships.id, victim.membershipId ?? ""));
+    if (!m) throw new Error("victim membership missing");
+    return issueMembershipInvoice(tx, victim.orgId ?? "", {
+      membershipId: m.id,
+      memberId: m.memberId,
+      planId: m.planId,
+      startDate: m.startDate,
+      endDate: m.endDate,
+      pricePaise: m.pricePaise,
+      joiningFeePaise: m.joiningFeePaise,
+      gstRateBps: m.gstRateBps,
+      gstPaise: m.gstPaise,
+      totalPaise: m.totalPaise,
+    });
+  });
+  victim.invoiceId = sale?.id ?? "";
 
   const attacker = await signedInStaff(api, dbh.db, { name: "Attacker owner" });
   attackerHeaders = attacker.headers;

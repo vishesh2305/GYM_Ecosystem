@@ -20,9 +20,11 @@ export class EventDispatcher {
     connection: Redis,
     private readonly handlers: readonly EventHandler[],
     private readonly logger: Logger,
+    prefix = "bull",
   ) {
     this.worker = new Worker<EventEnvelope>(EVENTS_QUEUE, (job) => this.process(job), {
       connection,
+      prefix,
       autorun: false,
       concurrency: 10,
     });

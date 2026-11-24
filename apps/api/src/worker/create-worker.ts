@@ -34,6 +34,7 @@ export async function createWorker(
 
   const queue = new Queue<EventEnvelope>(EVENTS_QUEUE, {
     connection,
+    prefix: env.QUEUE_PREFIX,
     defaultJobOptions: {
       attempts: env.EVENT_MAX_ATTEMPTS,
       backoff: { type: "exponential", delay: env.EVENT_BACKOFF_MS },
@@ -47,9 +48,10 @@ export async function createWorker(
     connection,
     [...handlers, ...extraHandlers],
     logger,
+    env.QUEUE_PREFIX,
   );
 
-  const maintenanceQueue = new Queue(MAINTENANCE_QUEUE, { connection });
+  const maintenanceQueue = new Queue(MAINTENANCE_QUEUE, { connection, prefix: env.QUEUE_PREFIX });
   await maintenanceQueue.upsertJobScheduler(
     "maintenance-hourly",
     { every: HOUR },
@@ -69,7 +71,7 @@ export async function createWorker(
           : await runMaintenance(db.db);
       logger.info({ job: job.name, ...result }, "scheduled job done");
     },
-    { connection, autorun: false },
+    { connection, prefix: env.QUEUE_PREFIX, autorun: false },
   );
 
   if (autostart) {
@@ -88,6 +90,7 @@ export async function createWorker(
     get queueEvents(): QueueEvents {
       return (queueEvents ??= new QueueEvents(EVENTS_QUEUE, {
         connection: connection.duplicate(),
+        prefix: env.QUEUE_PREFIX,
       }));
     },
     async close(): Promise<void> {

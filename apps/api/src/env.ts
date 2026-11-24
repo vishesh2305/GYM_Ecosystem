@@ -45,6 +45,11 @@ export const apiEnvSchema = baseEnvSchema
     OUTBOX_BATCH: z.coerce.number().int().positive().max(1000).default(100),
     EVENT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(8),
     EVENT_BACKOFF_MS: z.coerce.number().int().positive().default(1000),
+    /** Redis key prefix for background queues (lets several environments share one Redis). */
+    QUEUE_PREFIX: z
+      .string()
+      .regex(/^[a-z0-9_]+$/)
+      .default("bull"),
     JWT_PRIVATE_JWK: ed25519Jwk,
     JWT_ISSUER: z.string().default("gym-platform"),
     JWT_AUDIENCE: z.string().default("gym-api"),
