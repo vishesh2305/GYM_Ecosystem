@@ -82,6 +82,8 @@ export const apiEnvSchema = baseEnvSchema
     RAZORPAY_KEY_SECRET: z.string().optional(),
     /** Secret shared with Razorpay for webhook signatures (also used by the fake gateway). */
     RAZORPAY_WEBHOOK_SECRET: z.string().min(8).default("dev-webhook-secret"),
+    /** Days after an invoice's due date before the unpaid membership expires. */
+    DUNNING_GRACE_DAYS: z.coerce.number().int().min(0).max(60).default(7),
     /** Owners, managers and front desk must pass two-step verification before using a gym's data. */
     STAFF_MFA_REQUIRED: z.stringbool().default(true),
     /** OAuth client ids allowed as token audience (web, Android, iOS). Empty = sign-in with Google is off. */

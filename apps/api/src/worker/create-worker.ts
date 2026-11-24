@@ -4,6 +4,7 @@ import { Redis } from "ioredis";
 import { pino } from "pino";
 import type { ApiEnv } from "../env";
 import type { EventEnvelope, EventHandler } from "../platform/events";
+import { runPaymentReminders } from "../billing/reminders";
 import { runMembershipLifecycle } from "../membership/lifecycle";
 import { runMaintenance } from "../platform/maintenance";
 import { EVENTS_QUEUE, EventDispatcher } from "./event-dispatcher";
@@ -58,6 +59,11 @@ export async function createWorker(
     { name: "maintenance" },
   );
   await maintenanceQueue.upsertJobScheduler(
+    "payment-reminders-hourly",
+    { every: HOUR },
+    { name: "payment-reminders" },
+  );
+  await maintenanceQueue.upsertJobScheduler(
     "membership-lifecycle-hourly",
     { every: HOUR },
     { name: "membership-lifecycle" },
@@ -68,7 +74,9 @@ export async function createWorker(
       const result =
         job.name === "membership-lifecycle"
           ? await runMembershipLifecycle(db.db)
-          : await runMaintenance(db.db);
+          : job.name === "payment-reminders"
+            ? await runPaymentReminders(db.db, env.DUNNING_GRACE_DAYS)
+            : await runMaintenance(db.db);
       logger.info({ job: job.name, ...result }, "scheduled job done");
     },
     { connection, prefix: env.QUEUE_PREFIX, autorun: false },
