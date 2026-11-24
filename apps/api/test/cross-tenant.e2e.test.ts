@@ -1,6 +1,6 @@
 import { routes, type Route } from "@gym/contracts";
 import { createDb, withTenant, type DbHandle } from "@gym/db";
-import { branches, organisations, staffInvites, staffMembers } from "@gym/db/schema";
+import { branches, organisations, plans, staffInvites, staffMembers } from "@gym/db/schema";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import type { ConsoleSmsSender } from "../src/auth/senders";
@@ -19,6 +19,8 @@ const SAMPLE_BODIES: Record<string, object> = {
   updateBranch: { name: "Renamed by intruder" },
   inviteStaff: { channel: "sms", phone: "+919000000001", role: "trainer" },
   updateStaff: { role: "trainer" },
+  createPlan: { name: "Intruder plan", durationUnit: "month", durationCount: 1, pricePaise: 100 },
+  updatePlan: { pricePaise: 1 },
 };
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
@@ -39,6 +41,7 @@ async function snapshot() {
     branches: await tx.select().from(branches),
     staff: await tx.select().from(staffMembers),
     invites: await tx.select().from(staffInvites),
+    plans: await tx.select().from(plans),
   }));
 }
 
@@ -85,6 +88,19 @@ beforeAll(async () => {
     await api.inject({ method: "GET", url: `${base}/staff`, headers: victimOwner.headers })
   ).json() as { id: string; role: string }[];
   victim.staffId = staff.find((s) => s.role === "trainer")?.id ?? "";
+  victim.planId = (
+    await api.inject({
+      method: "POST",
+      url: `${base}/plans`,
+      headers: victimOwner.headers,
+      payload: {
+        name: "Victim plan",
+        durationUnit: "month",
+        durationCount: 1,
+        pricePaise: 150_000,
+      },
+    })
+  ).json().id;
 
   const attacker = await signedInStaff(api, dbh.db, { name: "Attacker owner" });
   attackerHeaders = attacker.headers;
@@ -140,5 +156,6 @@ describe("cross-tenant isolation matrix", () => {
     expect(after.branches.map((b) => b.name)).toEqual(["Main"]);
     expect(after.staff.map((s) => s.role).sort()).toEqual(["owner", "trainer"]);
     expect(after.invites.find((i) => i.id === victim.inviteId)?.revokedAt).toBeNull();
+    expect(after.plans.map((p) => [p.name, p.pricePaise])).toEqual([["Victim plan", 150_000]]);
   });
 });

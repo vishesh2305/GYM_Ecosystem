@@ -3,9 +3,15 @@ import { defineRoute } from "../route";
 
 export const staffRole = z.enum(["owner", "manager", "front_desk", "trainer"]);
 
-const timezone = z
-  .string()
-  .refine((tz) => Intl.supportedValuesOf("timeZone").includes(tz), "Unknown time zone");
+/** Any IANA zone or alias. (Intl.supportedValuesOf lists legacy names such as Asia/Calcutta, not Asia/Kolkata.) */
+const timezone = z.string().refine((tz) => {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}, "Unknown time zone");
 /** Indian GSTIN: 2-digit state, PAN, entity number, Z, check character. */
 const gstin = z
   .string()

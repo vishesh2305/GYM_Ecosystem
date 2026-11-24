@@ -120,6 +120,20 @@
       "when": 1795549123330,
       "tag": "0016_staff_invites_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795549863566,
+      "tag": "0017_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795549863822,
+      "tag": "0018_plans_rls",
+      "breakpoints": true
     }
   ]
 }

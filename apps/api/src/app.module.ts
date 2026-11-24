@@ -5,6 +5,7 @@ import { DocsController } from "./docs.controller";
 import type { ApiEnv } from "./env";
 import { HealthController } from "./health/health.controller";
 import { InfraModule } from "./infra.module";
+import { MembershipModule } from "./membership/membership.module";
 import { PlatformModule } from "./platform/platform.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
 
@@ -18,6 +19,7 @@ export class AppModule {
         PlatformModule,
         AuthModule,
         TenancyModule,
+        MembershipModule,
         ...modules,
       ],
       controllers: [HealthController, DocsController],

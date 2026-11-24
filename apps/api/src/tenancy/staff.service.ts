@@ -1,14 +1,7 @@
 import type { routes } from "@gym/contracts";
 import { withTenant, type DbHandle, type Tx } from "@gym/db";
 import { and, count, eq, gt, inArray, isNull, ne } from "@gym/db/orm";
-import {
-  branches,
-  organisations,
-  staffInvites,
-  staffMembers,
-  users,
-  type StaffRole,
-} from "@gym/db/schema";
+import { organisations, staffInvites, staffMembers, users, type StaffRole } from "@gym/db/schema";
 import { normalizePhone, type CountryCode } from "@gym/domain";
 import {
   BadRequestException,
@@ -29,6 +22,7 @@ import { appendEvent } from "../platform/events";
 import { DB, EMAIL_SENDER, ENV, SMS_SENDER } from "../tokens";
 import { staffJoined } from "./events";
 import { toOrganisation, type OrganisationOut } from "./mappers";
+import { assertBranchesExist, assertWithinMyBranches, overlapsMyBranches } from "./branch-checks";
 import { isBranchScoped, type TenantContext } from "./tenant.guard";
 
 type InviteIn = z.output<typeof routes.inviteStaff.body>;
@@ -59,11 +53,11 @@ export class StaffService {
     if (tenant.role === "manager" && (body.role === "owner" || body.role === "manager")) {
       throw new ForbiddenException("Managers can invite front desk staff and trainers only");
     }
-    const outsideMyBranches =
-      !body.branchIds.length || body.branchIds.some((id) => !tenant.branchIds.includes(id));
-    if (isBranchScoped(tenant) && outsideMyBranches) {
-      throw new ForbiddenException("You can only invite people to your own branches");
-    }
+    assertWithinMyBranches(
+      tenant,
+      body.branchIds,
+      "You can only invite people to your own branches",
+    );
     const destination =
       body.channel === "sms"
         ? normalizePhone(body.phone, this.env.DEFAULT_PHONE_REGION as CountryCode)
@@ -77,7 +71,7 @@ export class StaffService {
 
     const token = `${tenant.tenantId}.${randomBytes(32).toString("base64url")}`;
     const { invite, orgName } = await withTenant(this.db.db, tenant.tenantId, async (tx) => {
-      await this.assertBranches(tx, body.branchIds);
+      await assertBranchesExist(tx, body.branchIds);
       if (existingUser) {
         const [already] = await tx
           .select({ id: staffMembers.id })
@@ -250,9 +244,7 @@ export class StaffService {
     );
     // Branch-scoped staff see colleagues sharing a branch, plus people who work at every branch.
     const rows = isBranchScoped(tenant)
-      ? all.filter(
-          (r) => !r.branchIds.length || r.branchIds.some((id) => tenant.branchIds.includes(id)),
-        )
+      ? all.filter((r) => overlapsMyBranches(tenant, r.branchIds))
       : all;
     // Profiles live outside the tenant; the ids come from RLS-filtered rows, so only this gym's staff are read.
     const profiles = rows.length
@@ -277,7 +269,7 @@ export class StaffService {
         target.role === "owner" &&
         ((body.role && body.role !== "owner") || body.status === "suspended");
       if (losesOwner) await this.assertAnotherOwner(tx, staffId);
-      if (body.branchIds) await this.assertBranches(tx, body.branchIds);
+      if (body.branchIds) await assertBranchesExist(tx, body.branchIds);
       const [updated] = await tx
         .update(staffMembers)
         .set(body)
@@ -334,18 +326,6 @@ export class StaffService {
         ),
       );
     if (!others?.n) throw new ConflictException("A gym must always keep at least one active owner");
-  }
-
-  /** Every branch id must belong to this organisation (RLS hides other gyms' branches). */
-  private async assertBranches(tx: Tx, branchIds: string[]): Promise<void> {
-    const unique = [...new Set(branchIds)];
-    if (!unique.length) return;
-    const [found] = await tx
-      .select({ n: count() })
-      .from(branches)
-      .where(and(inArray(branches.id, unique), isNull(branches.deletedAt)));
-    if ((found?.n ?? 0) !== unique.length)
-      throw new BadRequestException("One or more branches do not exist");
   }
 }
 

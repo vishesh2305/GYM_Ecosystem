@@ -17,3 +17,40 @@ describe("the real API contract", () => {
     }
   });
 });
+
+describe("validation rules shared by the apps and the server", () => {
+  const plan = { name: "Monthly", durationUnit: "month", durationCount: 1, pricePaise: 150_000 };
+
+  it("a plan lasts at most 36 months but may be counted in days", () => {
+    expect(routes.createPlan.body.safeParse(plan).success).toBe(true);
+    expect(routes.createPlan.body.safeParse({ ...plan, durationCount: 37 }).success).toBe(false);
+    expect(
+      routes.createPlan.body.safeParse({ ...plan, durationUnit: "day", durationCount: 90 }).success,
+    ).toBe(true);
+  });
+
+  it("a new plan gets sensible defaults; an edit gets none", () => {
+    expect(routes.createPlan.body.parse(plan)).toMatchObject({
+      gstRateBps: 1800,
+      joiningFeePaise: 0,
+      branchIds: [],
+    });
+    expect(routes.updatePlan.body.parse({ pricePaise: 1 })).toEqual({ pricePaise: 1 });
+  });
+
+  it("checks GSTIN format and time zones", () => {
+    const org = { name: "Gym", branch: { name: "Main", city: "Pune" } };
+    expect(
+      routes.createOrganisation.body.safeParse({ ...org, gstin: "27aapfu0939f1zv" }).success,
+    ).toBe(true);
+    expect(
+      routes.createOrganisation.body.safeParse({ ...org, gstin: "27AAPFU0939F1Z" }).success,
+    ).toBe(false);
+    expect(
+      routes.createOrganisation.body.safeParse({ ...org, timezone: "Asia/Kolkata" }).success,
+    ).toBe(true);
+    expect(
+      routes.createOrganisation.body.safeParse({ ...org, timezone: "Asia/Atlantis" }).success,
+    ).toBe(false);
+  });
+});

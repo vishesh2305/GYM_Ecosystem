@@ -2,3 +2,4 @@
 export * from "./identity";
 export * from "./platform";
 export * from "./tenancy";
+export * from "./membership";
