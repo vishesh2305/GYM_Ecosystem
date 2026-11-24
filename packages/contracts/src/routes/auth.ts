@@ -104,3 +104,51 @@ export const signInWithProvider = defineRoute({
   }),
   response: tokenPair.extend({ isNewUser: z.boolean() }),
 });
+
+export const getMfaStatus = defineRoute({
+  method: "GET",
+  path: "/v1/auth/mfa",
+  summary: "Is two-step verification on, and how many recovery codes are left",
+  tag: "auth",
+  response: z.object({ totpEnabled: z.boolean(), recoveryCodesLeft: z.number().int() }),
+});
+
+export const setupTotp = defineRoute({
+  method: "POST",
+  path: "/v1/auth/mfa/totp/setup",
+  summary: "Start two-step verification: returns the secret / QR link for an authenticator app",
+  tag: "auth",
+  response: z.object({ secret: z.string(), otpauthUrl: z.string() }),
+  status: 201,
+});
+
+export const confirmTotp = defineRoute({
+  method: "POST",
+  path: "/v1/auth/mfa/totp/confirm",
+  summary: "Finish setup with a first code; returns 10 one-time recovery codes (shown once)",
+  tag: "auth",
+  body: z.object({ code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code") }),
+  response: z.object({ recoveryCodes: z.array(z.string()) }),
+});
+
+export const verifyMfa = defineRoute({
+  method: "POST",
+  path: "/v1/auth/mfa/verify",
+  summary:
+    "Prove two-step verification for this session (code or recovery code); returns upgraded tokens",
+  tag: "auth",
+  body: z.union([
+    z.object({ code: z.string().regex(/^\d{6}$/, "Enter the 6-digit code") }),
+    z.object({ recoveryCode: z.string().min(10).max(20) }),
+  ]),
+  response: tokenPair,
+});
+
+export const disableTotp = defineRoute({
+  method: "DELETE",
+  path: "/v1/auth/mfa/totp",
+  summary: "Turn off two-step verification (requires a verified session)",
+  tag: "auth",
+  response: z.undefined(),
+  status: 204,
+});

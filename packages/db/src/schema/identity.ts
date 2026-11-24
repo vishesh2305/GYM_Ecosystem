@@ -1,4 +1,13 @@
-import { index, pgTable, smallint, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  index,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { id, softDelete, timestamps } from "../columns";
 
 const tz = { withTimezone: true } as const;
@@ -92,4 +101,31 @@ export const authIdentities = pgTable(
     unique("auth_identities_provider_subject").on(t.provider, t.subject),
     index("auth_identities_user_idx").on(t.userId),
   ],
+);
+
+/** Authenticator-app (TOTP) two-step verification. The secret is AES-256-GCM encrypted. */
+export const userMfa = pgTable("user_mfa", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  totpSecretEnc: text("totp_secret_enc").notNull(),
+  confirmedAt: timestamp("confirmed_at", tz),
+  /** Last accepted 30-second step: a code is never accepted twice. */
+  lastUsedStep: bigint("last_used_step", { mode: "number" }),
+  createdAt: timestamp("created_at", tz).notNull().defaultNow(),
+});
+
+/** Single-use recovery codes for when the phone with the authenticator app is lost. Stored as HMACs. */
+export const recoveryCodes = pgTable(
+  "recovery_codes",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    usedAt: timestamp("used_at", tz),
+    createdAt: timestamp("created_at", tz).notNull().defaultNow(),
+  },
+  (t) => [index("recovery_codes_user_idx").on(t.userId)],
 );

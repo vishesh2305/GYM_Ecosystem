@@ -98,6 +98,18 @@ export class SessionService {
     return this.issue(row.session.id, row.session.userId, row.session.amr);
   }
 
+  /** Mark the session as having passed two-step verification and issue tokens that say so. */
+  async elevate(sessionId: string): Promise<TokenPair> {
+    const [session] = await this.db.db.select().from(sessions).where(eq(sessions.id, sessionId));
+    if (!session) throw new UnauthorizedException("This session has ended");
+    const amr = session.amr.includes("mfa") ? session.amr : [...session.amr, "mfa"];
+    await this.db.db
+      .update(sessions)
+      .set({ amr, mfaVerifiedAt: new Date() })
+      .where(eq(sessions.id, sessionId));
+    return this.issue(sessionId, session.userId, amr);
+  }
+
   async revoke(sessionId: string, reason: string): Promise<void> {
     await this.db.db
       .update(sessions)

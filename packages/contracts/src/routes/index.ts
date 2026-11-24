@@ -1,5 +1,10 @@
 import {
+  confirmTotp,
+  disableTotp,
+  getMfaStatus,
   listSessions,
+  setupTotp,
+  verifyMfa,
   refreshSession,
   requestOtp,
   revokeSession,
@@ -23,6 +28,11 @@ export const routes = {
   signOutEverywhere,
   listSessions,
   revokeSession,
+  getMfaStatus,
+  setupTotp,
+  confirmTotp,
+  verifyMfa,
+  disableTotp,
   getMe,
   updateMe,
 };

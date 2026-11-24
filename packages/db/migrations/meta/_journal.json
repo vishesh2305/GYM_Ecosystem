@@ -64,6 +64,20 @@
       "when": 1795547596186,
       "tag": "0008_auth_identities_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795547744696,
+      "tag": "0009_mfa",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795547744943,
+      "tag": "0010_mfa_grants",
+      "breakpoints": true
     }
   ]
 }

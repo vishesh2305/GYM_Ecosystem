@@ -53,6 +53,11 @@ export const apiEnvSchema = baseEnvSchema
     SESSION_MAX_DAYS: z.coerce.number().int().positive().default(90),
     /** Secret for hashing one-time codes (at least 32 characters). */
     AUTH_SECRET: z.string().min(32),
+    /** 32 random bytes, base64. Encrypts two-step verification secrets. `openssl rand -base64 32` */
+    AUTH_ENCRYPTION_KEY: z
+      .base64()
+      .transform((value) => Buffer.from(value, "base64"))
+      .refine((key) => key.length === 32, "must be 32 bytes (base64)"),
     OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
     OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
     OTP_MAX_PER_WINDOW: z.coerce.number().int().positive().default(3),

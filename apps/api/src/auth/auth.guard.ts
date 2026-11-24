@@ -1,5 +1,6 @@
 import {
   createParamDecorator,
+  ForbiddenException,
   Inject,
   Injectable,
   SetMetadata,
@@ -14,9 +15,13 @@ import { SessionService } from "./session.service";
 import { TokenService } from "./token.service";
 
 const PUBLIC = "auth:public";
+const MFA = "auth:mfa";
 
 /** Opt a controller or route out of authentication. Everything else requires a valid access token. */
 export const Public = () => SetMetadata(PUBLIC, true);
+
+/** Require a session that completed two-step verification (403 otherwise). */
+export const RequireMfa = () => SetMetadata(MFA, true);
 
 /** The signed-in caller (only on routes that are not @Public). */
 export const CurrentAuth = createParamDecorator(
@@ -46,6 +51,13 @@ export class AuthGuard implements CanActivate {
     if (await this.sessions.isRevoked(auth.sessionId))
       throw new UnauthorizedException("This session has ended");
     request.auth = auth;
+    const needsMfa = this.reflector.getAllAndOverride<boolean>(MFA, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (needsMfa && !auth.amr.includes("mfa")) {
+      throw new ForbiddenException("Two-step verification is required for this action");
+    }
     return true;
   }
 }

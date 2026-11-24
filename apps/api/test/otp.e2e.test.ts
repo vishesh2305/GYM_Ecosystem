@@ -7,7 +7,7 @@ import { createApp } from "../src/app";
 import type { ConsoleSmsSender } from "../src/auth/senders";
 import { apiEnvSchema } from "../src/env";
 import { SMS_SENDER } from "../src/tokens";
-import { testEnv } from "./helpers";
+import { rawTestEnv, testEnv } from "./helpers";
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
 let dbh: DbHandle;
@@ -193,22 +193,7 @@ describe("codes are hard to abuse", () => {
 
   it("refuses to start in production with the development SMS sender", () => {
     expect(() =>
-      parseEnv(apiEnvSchema, {
-        ...process.env,
-        ...testEnvRaw(),
-        NODE_ENV: "production",
-        SMS_PROVIDER: "console",
-      }),
+      parseEnv(apiEnvSchema, rawTestEnv({ NODE_ENV: "production", SMS_PROVIDER: "console" })),
     ).toThrow(/SMS_PROVIDER/);
   });
 });
-
-function testEnvRaw(): Record<string, string> {
-  const env = testEnv();
-  return {
-    DATABASE_URL: env.DATABASE_URL,
-    REDIS_URL: env.REDIS_URL,
-    JWT_PRIVATE_JWK: JSON.stringify(env.JWT_PRIVATE_JWK),
-    AUTH_SECRET: env.AUTH_SECRET,
-  };
-}

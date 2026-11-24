@@ -1,10 +1,9 @@
 import { createClient, routes } from "@gym/contracts";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
-import { Redis } from "ioredis";
 import { version } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
-import { testEnv } from "./helpers";
+import { randomIp, testEnv } from "./helpers";
 import { TestModule } from "./test.module";
 
 let app: NestFastifyApplication;
@@ -136,9 +135,8 @@ describe("errors are RFC 9457 problem details", () => {
 
 describe("rate limiting (Redis-backed)", () => {
   it("returns 429 problem with retry-after once the limit is hit", async () => {
-    const redis = new Redis(testEnv().REDIS_URL);
-    await redis.flushall();
-    await redis.quit();
+    // A fresh address instead of clearing Redis: other test files share it and run in parallel.
+    const ip = randomIp();
     const { app: limited } = await createApp(testEnv({ RATE_LIMIT_MAX: "3" }));
     try {
       const codes: number[] = [];
@@ -147,7 +145,7 @@ describe("rate limiting (Redis-backed)", () => {
         last = await limited.inject({
           method: "GET",
           url: "/v1/health",
-          remoteAddress: "10.9.8.7",
+          remoteAddress: ip,
         });
         codes.push(last.statusCode);
       }
@@ -158,7 +156,7 @@ describe("rate limiting (Redis-backed)", () => {
       const other = await limited.inject({
         method: "GET",
         url: "/v1/health",
-        remoteAddress: "10.9.8.8",
+        remoteAddress: randomIp(),
       });
       expect(other.statusCode).toBe(200);
     } finally {

@@ -6,7 +6,7 @@ import { createApp } from "../src/app";
 import type { ConsoleEmailSender } from "../src/auth/senders";
 import { SmtpEmailSender } from "../src/auth/senders";
 import { EMAIL_SENDER } from "../src/tokens";
-import { testEnv } from "./helpers";
+import { rawTestEnv, testEnv } from "./helpers";
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
 let mail: ConsoleEmailSender;
@@ -95,15 +95,7 @@ describe("sign in with a code sent by email", () => {
 });
 
 describe("email settings", () => {
-  const base = () => {
-    const env = testEnv();
-    return {
-      DATABASE_URL: env.DATABASE_URL,
-      REDIS_URL: env.REDIS_URL,
-      JWT_PRIVATE_JWK: JSON.stringify(env.JWT_PRIVATE_JWK),
-      AUTH_SECRET: env.AUTH_SECRET,
-    };
-  };
+  const base = () => rawTestEnv();
   it("require SMTP_URL when sending through SMTP", () => {
     expect(() => parseEnv(apiEnvSchema, { ...base(), EMAIL_PROVIDER: "smtp" })).toThrow(/SMTP_URL/);
   });
