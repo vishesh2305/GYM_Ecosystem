@@ -16,6 +16,15 @@ import {
 import { listConsents, recordConsent } from "./consents";
 import { getMe, updateMe } from "./me";
 import { health, ready } from "./system";
+import {
+  createBranch,
+  createOrganisation,
+  getOrganisation,
+  listBranches,
+  listMyOrganisations,
+  updateBranch,
+  updateOrganisation,
+} from "./tenancy";
 
 /** Every API operation. The key is the OpenAPI operationId. */
 export const routes = {
@@ -38,4 +47,11 @@ export const routes = {
   updateMe,
   listConsents,
   recordConsent,
+  createOrganisation,
+  listMyOrganisations,
+  getOrganisation,
+  updateOrganisation,
+  listBranches,
+  createBranch,
+  updateBranch,
 };

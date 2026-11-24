@@ -1,6 +1,9 @@
 import { parseEnv } from "@gym/config";
+import type { Database } from "@gym/db";
+import { users } from "@gym/db/schema";
 import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { inject } from "vitest";
+import { SessionService } from "../src/auth/session.service";
 import { apiEnvSchema, type ApiEnv } from "../src/env";
 
 // Secrets are generated once per test file, so tokens stay valid across the apps a file creates.
@@ -32,3 +35,20 @@ export function testEnv(overrides: Record<string, string> = {}): ApiEnv {
 /** A fresh client address, so per-address rate limits in one test do not affect another. */
 export const randomIp = () =>
   `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`;
+
+/** Create a user and a signed-in session for them. `amr` defaults to an SMS-code sign-in. */
+export async function signedInUser(
+  app: { get<T>(token: abstract new (...args: never[]) => T): T },
+  db: Database,
+  options: { name?: string; amr?: string[] } = {},
+) {
+  const [user] = await db
+    .insert(users)
+    .values({ name: options.name ?? "Test person" })
+    .returning();
+  if (!user) throw new Error("user insert returned nothing");
+  const tokens = await app
+    .get(SessionService)
+    .createSession(user.id, { amr: options.amr ?? ["otp"] });
+  return { user, ...tokens, headers: { authorization: `Bearer ${tokens.accessToken}` } };
+}
