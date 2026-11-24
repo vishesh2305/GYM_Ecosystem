@@ -32,8 +32,9 @@ export const requestHash = (method: string, url: string, body: unknown) =>
     .update(JSON.stringify([method, url, body ?? null]))
     .digest("hex");
 
-// shortcut: scoped by client IP until auth exists; A7 switches this to the authenticated principal.
-const scopeOf = (request: FastifyRequest) => `ip:${request.ip}`;
+/** Keys belong to the signed-in person (any network); anonymous callers are scoped by address. */
+const scopeOf = (request: FastifyRequest) =>
+  request.auth ? `user:${request.auth.userId}` : `ip:${request.ip}`;
 
 type Begin = { run: true } | { run: false; body: unknown };
 

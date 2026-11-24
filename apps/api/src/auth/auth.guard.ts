@@ -38,26 +38,31 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    if (
-      this.reflector.getAllAndOverride<boolean>(PUBLIC, [context.getHandler(), context.getClass()])
-    )
-      return true;
-
     const request = context.switchToHttp().getRequest<FastifyRequest>();
     const [scheme, token] = (request.headers.authorization ?? "").split(" ");
-    if (scheme !== "Bearer" || !token) throw new UnauthorizedException("Sign in required");
+    const bearer = scheme === "Bearer" && token ? token : undefined;
+    const targets = [context.getHandler(), context.getClass()];
 
-    const auth = await this.tokens.verifyAccess(token);
-    if (await this.sessions.isRevoked(auth.sessionId))
-      throw new UnauthorizedException("This session has ended");
+    if (this.reflector.getAllAndOverride<boolean>(PUBLIC, targets)) {
+      // Public routes still recognise a signed-in caller; a bad token is simply ignored here.
+      const auth = bearer ? await this.authenticate(bearer).catch(() => undefined) : undefined;
+      if (auth) request.auth = auth;
+      return true;
+    }
+
+    if (!bearer) throw new UnauthorizedException("Sign in required");
+    const auth = await this.authenticate(bearer);
     request.auth = auth;
-    const needsMfa = this.reflector.getAllAndOverride<boolean>(MFA, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (needsMfa && !auth.amr.includes("mfa")) {
+    if (this.reflector.getAllAndOverride<boolean>(MFA, targets) && !auth.amr.includes("mfa")) {
       throw new ForbiddenException("Two-step verification is required for this action");
     }
     return true;
+  }
+
+  private async authenticate(token: string): Promise<AuthContext> {
+    const auth = await this.tokens.verifyAccess(token);
+    if (await this.sessions.isRevoked(auth.sessionId))
+      throw new UnauthorizedException("This session has ended");
+    return auth;
   }
 }

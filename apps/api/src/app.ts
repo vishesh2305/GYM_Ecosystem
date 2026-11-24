@@ -8,6 +8,7 @@ import type { Type } from "@nestjs/common";
 import type { IncomingMessage } from "node:http";
 import { v7 } from "uuid";
 import { AppModule } from "./app.module";
+import { TokenService } from "./auth/token.service";
 import { ProblemFilter } from "./common/problem.filter";
 import type { ApiEnv } from "./env";
 import { createRedis } from "./infra.module";
@@ -58,7 +59,17 @@ export async function createApp(env: ApiEnv, options: CreateAppOptions = {}) {
 
   await app.register(helmet);
   await app.register(cors, { origin: env.CORS_ORIGINS, credentials: true });
+  const tokens = app.get(TokenService);
   await app.register(rateLimit, {
+    // Signed-in callers are limited per person (a verified token), everyone else per address.
+    keyGenerator: async (request) => {
+      const [scheme, token] = (request.headers.authorization ?? "").split(" ");
+      if (scheme === "Bearer" && token) {
+        const auth = await tokens.verifyAccess(token).catch(() => undefined);
+        if (auth) return `user:${auth.userId}`;
+      }
+      return `ip:${request.ip}`;
+    },
     max: env.RATE_LIMIT_MAX,
     timeWindow: env.RATE_LIMIT_WINDOW,
     redis,
