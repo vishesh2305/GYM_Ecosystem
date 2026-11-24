@@ -221,6 +221,18 @@ describe("managing staff", () => {
     expect((await req("GET", g.base, trainer.headers)).statusCode).toBe(404);
   });
 
+  it("staff can only be given branches of this gym", async () => {
+    const g = await gym();
+    const other = await gym();
+    const ownerStaff = (
+      (await req("GET", `${g.base}/staff`, g.owner.headers)).json() as { id: string }[]
+    )[0]?.id;
+    const res = await req("PATCH", `${g.base}/staff/${ownerStaff}`, g.owner.headers, {
+      branchIds: [other.branch.id],
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it("the last owner can never be removed, demoted or suspended", async () => {
     const g = await gym();
     const ownerStaff = (

@@ -48,6 +48,20 @@ describe("hourly membership upkeep", () => {
     expect((await t.read())?.status).toBe("active");
   });
 
+  it("a trial that was waiting to start begins as a trial", async () => {
+    const t = await membershipWith({
+      name: "Trial",
+      durationUnit: "day",
+      durationCount: 7,
+      pricePaise: 0,
+      joiningFeePaise: 0,
+      isTrial: true,
+    });
+    await t.set({ status: "pending" });
+    await runMembershipLifecycle(dbh.db);
+    expect((await t.read())?.status).toBe("trial");
+  });
+
   it("expires memberships after their last day and announces it", async () => {
     const t = await membershipWith();
     await t.set({ startDate: addDays(today(), -30), endDate: addDays(today(), -1) });

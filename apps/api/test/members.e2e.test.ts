@@ -122,6 +122,31 @@ describe("member records", () => {
   });
 });
 
+describe("moving members between branches", () => {
+  it("branch staff cannot move a member to a branch they do not work at", async () => {
+    const g = await gym();
+    const other = (
+      await req("POST", `${g.base}/branches`, g.owner.headers, { name: "Elsewhere", city: "Pune" })
+    ).json();
+    const desk = await g.join("front_desk", [g.branch.id]);
+    const m = (
+      await req("POST", `${g.base}/members`, desk.headers, {
+        name: "Mover",
+        homeBranchId: g.branch.id,
+      })
+    ).json();
+    expect(
+      (await req("PATCH", `${g.base}/members/${m.id}`, desk.headers, { homeBranchId: other.id }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await req("PATCH", `${g.base}/members/${m.id}`, g.owner.headers, { homeBranchId: other.id })
+      ).json().homeBranchId,
+    ).toBe(other.id);
+  });
+});
+
 describe("finding members", () => {
   it("searches by name or phone and pages through results, newest first", async () => {
     const g = await gym();
