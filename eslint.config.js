@@ -11,6 +11,14 @@ export default tseslint.config(
         "error",
         { ignoreRestSiblings: true, argsIgnorePattern: "^_" },
       ],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            { name: "drizzle-orm", message: 'Import from "@gym/db/orm" (one drizzle instance).' },
+          ],
+        },
+      ],
       // Nest modules are decorator-only classes.
       "@typescript-eslint/no-extraneous-class": ["error", { allowWithDecorator: true }],
     },

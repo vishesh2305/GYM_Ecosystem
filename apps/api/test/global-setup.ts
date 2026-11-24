@@ -1,5 +1,6 @@
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { GenericContainer, Wait } from "testcontainers";
+import { createDb, runMigrations } from "@gym/db";
 import type { TestProject } from "vitest/node";
 
 declare module "vitest" {
@@ -17,6 +18,9 @@ export default async function setup(project: TestProject) {
       .withWaitStrategy(Wait.forLogMessage("Ready to accept connections"))
       .start(),
   ]);
+  const { db, pool } = createDb(pg.getConnectionUri());
+  await runMigrations(db);
+  await pool.end();
   project.provide("databaseUrl", pg.getConnectionUri());
   project.provide("redisUrl", `redis://${valkey.getHost()}:${valkey.getMappedPort(6379)}`);
   return async () => {

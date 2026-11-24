@@ -8,6 +8,20 @@
       "when": 1795512091422,
       "tag": "0000_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795545885881,
+      "tag": "0001_platform",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795545886134,
+      "tag": "0002_platform_grants",
+      "breakpoints": true
     }
   ]
 }

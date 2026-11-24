@@ -23,9 +23,9 @@ Local ports avoid 5432/6379 so this project does not clash with other local data
 
 ```
 apps/
-  api/         NestJS 12 + Fastify HTTP API (/v1)
+  api/         NestJS 12 + Fastify HTTP API (/v1) and the worker entry point (src/worker.ts)
 packages/
-  domain/      pure business rules (money, proration, …) — no I/O
+  domain/      pure business rules (money, feature-flag evaluation, …) — no I/O
   config/      zod-validated environment loading
   contracts/   route contracts (zod): server validation, OpenAPI, typed client
   db/          Drizzle schema, migrations, tenant scope (RLS), column helpers

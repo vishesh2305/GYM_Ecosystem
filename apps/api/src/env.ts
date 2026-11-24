@@ -19,6 +19,10 @@ export const apiEnvSchema = baseEnvSchema.extend({
   BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(1_048_576),
   TRUST_PROXY: z.stringbool().default(false),
   DB_POOL_MAX: z.coerce.number().int().positive().default(10),
+  OUTBOX_POLL_MS: z.coerce.number().int().positive().default(500),
+  OUTBOX_BATCH: z.coerce.number().int().positive().max(1000).default(100),
+  EVENT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(8),
+  EVENT_BACKOFF_MS: z.coerce.number().int().positive().default(1000),
 });
 
 export type ApiEnv = z.output<typeof apiEnvSchema>;

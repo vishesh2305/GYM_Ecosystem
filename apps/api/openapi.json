@@ -9,7 +9,9 @@
       "get": {
         "operationId": "health",
         "summary": "Liveness: the process is up",
-        "tags": ["system"],
+        "tags": [
+          "system"
+        ],
         "parameters": [],
         "responses": {
           "200": {
@@ -24,7 +26,9 @@
                       "const": "ok"
                     }
                   },
-                  "required": ["status"],
+                  "required": [
+                    "status"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -47,7 +51,9 @@
       "get": {
         "operationId": "ready",
         "summary": "Readiness: database and cache are reachable",
-        "tags": ["system"],
+        "tags": [
+          "system"
+        ],
         "parameters": [],
         "responses": {
           "200": {
@@ -73,11 +79,17 @@
                           "const": "ok"
                         }
                       },
-                      "required": ["database", "cache"],
+                      "required": [
+                        "database",
+                        "cache"
+                      ],
                       "additionalProperties": false
                     }
                   },
-                  "required": ["status", "checks"],
+                  "required": [
+                    "status",
+                    "checks"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -134,12 +146,19 @@
                   "type": "string"
                 }
               },
-              "required": ["path", "message"],
+              "required": [
+                "path",
+                "message"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["type", "title", "status"],
+        "required": [
+          "type",
+          "title",
+          "status"
+        ],
         "additionalProperties": false
       }
     }
