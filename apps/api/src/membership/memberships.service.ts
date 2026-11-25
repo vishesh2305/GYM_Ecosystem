@@ -57,6 +57,103 @@ export async function orgToday(tx: Tx): Promise<string> {
   return todayIn(org?.timezone ?? "Asia/Kolkata");
 }
 
+/**
+ * Sell a plan inside the caller's transaction. Staff sales record who sold it; the AutoPay renewal job passes
+ * `staffId: null` and the mandate it renews under.
+ */
+export async function sellPlan(
+  tx: Tx,
+  tenant: { tenantId: string; staffId: string | null },
+  member: { id: string; homeBranchId: string },
+  planId: string,
+  startDate: string,
+  today: string,
+  renewedByMandateId: string | null = null,
+) {
+  const [plan] = await tx.select().from(plans).where(eq(plans.id, planId));
+  if (!plan || !plan.active) throw new BadRequestException("This plan is not available");
+  if (plan.branchIds.length && !plan.branchIds.includes(member.homeBranchId)) {
+    throw new BadRequestException("This plan is not sold at the member's home branch");
+  }
+
+  const live = await tx
+    .select()
+    .from(memberships)
+    .where(
+      and(eq(memberships.memberId, member.id), inArray(memberships.status, [...LIVE_STATUSES])),
+    );
+  const clash = live.find((m) => m.endDate >= startDate);
+  if (clash) {
+    throw new ConflictException(
+      `The member already has a membership until ${clash.endDate}; start the new one after that`,
+    );
+  }
+
+  const [previous] = await tx
+    .select({ n: count() })
+    .from(memberships)
+    .where(eq(memberships.memberId, member.id));
+  const joiningFeePaise = previous?.n ? 0 : plan.joiningFeePaise;
+  const price = priceBreakdown({
+    pricePaise: plan.pricePaise,
+    joiningFeePaise,
+    gstRateBps: plan.gstRateBps,
+  });
+  const endDate = planEndDate(startDate, { unit: plan.durationUnit, count: plan.durationCount });
+
+  const [row] = await tx
+    .insert(memberships)
+    .values({
+      tenantId: tenant.tenantId,
+      memberId: member.id,
+      planId: plan.id,
+      planName: plan.name,
+      status: initialStatus({ startDate, today, isTrial: plan.isTrial }),
+      startDate,
+      endDate,
+      isTrial: plan.isTrial,
+      pricePaise: price.pricePaise,
+      joiningFeePaise: price.joiningFeePaise,
+      gstRateBps: plan.gstRateBps,
+      gstPaise: price.gstPaise,
+      totalPaise: price.totalPaise,
+      maxFreezes: plan.maxFreezes,
+      maxFreezeDays: plan.maxFreezeDays,
+      createdBy: tenant.staffId,
+      renewedByMandateId,
+    })
+    .returning();
+  if (!row) throw new Error("membership insert returned nothing");
+
+  await appendEvent(
+    tx,
+    membershipCreated,
+    {
+      membershipId: row.id,
+      memberId: member.id,
+      planId: plan.id,
+      startDate,
+      endDate,
+      pricePaise: price.pricePaise,
+      joiningFeePaise: price.joiningFeePaise,
+      gstRateBps: plan.gstRateBps,
+      gstPaise: price.gstPaise,
+      totalPaise: price.totalPaise,
+    },
+    tenant.tenantId,
+  );
+  await recordAudit(tx, {
+    tenantId: tenant.tenantId,
+    actorType: tenant.staffId ? "staff" : "system",
+    actorId: tenant.staffId,
+    action: "membership.created",
+    entityType: "membership",
+    entityId: row.id,
+    data: { planId: plan.id, startDate, endDate, totalPaise: price.totalPaise },
+  });
+  return row;
+}
+
 @Injectable()
 export class MembershipsService {
   constructor(
@@ -90,7 +187,7 @@ export class MembershipsService {
       const today = await orgToday(tx);
       const startDate = input.startDate ?? today;
       if (startDate < today) throw new BadRequestException("A membership cannot start in the past");
-      return toMembership(await this.sell(tx, tenant, member, input.planId, startDate, today));
+      return toMembership(await sellPlan(tx, tenant, member, input.planId, startDate, today));
     });
   }
 
@@ -116,7 +213,7 @@ export class MembershipsService {
         throw new ConflictException(
           "The membership was changed at the same time; please try again",
         );
-      const next = await this.sell(tx, tenant, member, planId, today, today);
+      const next = await sellPlan(tx, tenant, member, planId, today, today);
       await appendEvent(
         tx,
         membershipPlanChanged,
@@ -134,97 +231,6 @@ export class MembershipsService {
       });
       return { previous: toMembership(old), current: toMembership(next), creditPaise };
     });
-  }
-
-  private async sell(
-    tx: Tx,
-    tenant: TenantContext,
-    member: { id: string; homeBranchId: string },
-    planId: string,
-    startDate: string,
-    today: string,
-  ) {
-    const [plan] = await tx.select().from(plans).where(eq(plans.id, planId));
-    if (!plan || !plan.active) throw new BadRequestException("This plan is not available");
-    if (plan.branchIds.length && !plan.branchIds.includes(member.homeBranchId)) {
-      throw new BadRequestException("This plan is not sold at the member's home branch");
-    }
-
-    const live = await tx
-      .select()
-      .from(memberships)
-      .where(
-        and(eq(memberships.memberId, member.id), inArray(memberships.status, [...LIVE_STATUSES])),
-      );
-    const clash = live.find((m) => m.endDate >= startDate);
-    if (clash) {
-      throw new ConflictException(
-        `The member already has a membership until ${clash.endDate}; start the new one after that`,
-      );
-    }
-
-    const [previous] = await tx
-      .select({ n: count() })
-      .from(memberships)
-      .where(eq(memberships.memberId, member.id));
-    const joiningFeePaise = previous?.n ? 0 : plan.joiningFeePaise;
-    const price = priceBreakdown({
-      pricePaise: plan.pricePaise,
-      joiningFeePaise,
-      gstRateBps: plan.gstRateBps,
-    });
-    const endDate = planEndDate(startDate, { unit: plan.durationUnit, count: plan.durationCount });
-
-    const [row] = await tx
-      .insert(memberships)
-      .values({
-        tenantId: tenant.tenantId,
-        memberId: member.id,
-        planId: plan.id,
-        planName: plan.name,
-        status: initialStatus({ startDate, today, isTrial: plan.isTrial }),
-        startDate,
-        endDate,
-        isTrial: plan.isTrial,
-        pricePaise: price.pricePaise,
-        joiningFeePaise: price.joiningFeePaise,
-        gstRateBps: plan.gstRateBps,
-        gstPaise: price.gstPaise,
-        totalPaise: price.totalPaise,
-        maxFreezes: plan.maxFreezes,
-        maxFreezeDays: plan.maxFreezeDays,
-        createdBy: tenant.staffId,
-      })
-      .returning();
-    if (!row) throw new Error("membership insert returned nothing");
-
-    await appendEvent(
-      tx,
-      membershipCreated,
-      {
-        membershipId: row.id,
-        memberId: member.id,
-        planId: plan.id,
-        startDate,
-        endDate,
-        pricePaise: price.pricePaise,
-        joiningFeePaise: price.joiningFeePaise,
-        gstRateBps: plan.gstRateBps,
-        gstPaise: price.gstPaise,
-        totalPaise: price.totalPaise,
-      },
-      tenant.tenantId,
-    );
-    await recordAudit(tx, {
-      tenantId: tenant.tenantId,
-      actorType: "staff",
-      actorId: tenant.staffId,
-      action: "membership.created",
-      entityType: "membership",
-      entityId: row.id,
-      data: { planId: plan.id, startDate, endDate, totalPaise: price.totalPaise },
-    });
-    return row;
   }
 
   /** Pause an active membership; its end date moves back by the frozen days. */

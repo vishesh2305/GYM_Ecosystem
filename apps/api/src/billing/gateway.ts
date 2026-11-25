@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { v7 } from "uuid";
+import type { ApiEnv } from "../env";
 
 /** What billing needs from a payment gateway. One adapter per gateway (ADR 006). */
 export interface PaymentGateway {
@@ -184,3 +185,9 @@ export class RazorpayGateway implements PaymentGateway {
     return body;
   }
 }
+
+/** Razorpay when configured with keys, otherwise the fake (env validation refuses the fake in production). */
+export const createGateway = (env: ApiEnv): PaymentGateway =>
+  env.PAYMENT_GATEWAY === "razorpay" && env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET
+    ? new RazorpayGateway(env.RAZORPAY_KEY_ID, env.RAZORPAY_KEY_SECRET)
+    : new FakeGateway();

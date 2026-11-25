@@ -3,7 +3,12 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { apiEnvSchema } from "../src/env";
-import { RazorpayGateway, verifyWebhookSignature } from "../src/billing/gateway";
+import {
+  createGateway,
+  FakeGateway,
+  RazorpayGateway,
+  verifyWebhookSignature,
+} from "../src/billing/gateway";
 import { rawTestEnv } from "./helpers";
 
 // A local stand-in for api.razorpay.com that records what the adapter sends.
@@ -103,6 +108,30 @@ describe("Razorpay UPI AutoPay", () => {
     });
   });
 
+  it("sends the email instead of a phone number when that is all the member gave", async () => {
+    const emailOnly = { name: "Ravi", phone: null, email: "ravi@example.com" };
+    const before = seen.length;
+    await gateway().createMandateOrder({
+      amountPaise: 100,
+      maxAmountPaise: 100,
+      receipt: "r",
+      notes: {},
+      payer: emailOnly,
+    });
+    await gateway().chargeMandate({
+      customerId: "cust_C1",
+      tokenId: "token_T1",
+      amountPaise: 100,
+      receipt: "r",
+      notes: {},
+      payer: emailOnly,
+    });
+    const [customer, , , recurring] = seen.slice(before);
+    expect(customer?.body).toEqual({ name: "Ravi", email: "ravi@example.com", fail_existing: "0" });
+    expect(recurring?.body).toMatchObject({ email: "ravi@example.com" });
+    expect(recurring?.body).not.toHaveProperty("contact");
+  });
+
   it("charges a mandate with an order and a recurring payment, and cancels it", async () => {
     const before = seen.length;
     expect(
@@ -155,5 +184,14 @@ describe("payment settings", () => {
     expect(() => parseEnv(apiEnvSchema, rawTestEnv({ PAYMENT_GATEWAY: "razorpay" }))).toThrow(
       /RAZORPAY_KEY_ID/,
     );
+  });
+  it("use Razorpay only when it is chosen and has keys", () => {
+    const env = (extra: Record<string, string> = {}) => parseEnv(apiEnvSchema, rawTestEnv(extra));
+    expect(createGateway(env())).toBeInstanceOf(FakeGateway);
+    const razorpay = createGateway(
+      env({ PAYMENT_GATEWAY: "razorpay", RAZORPAY_KEY_ID: "rzp_test_k", RAZORPAY_KEY_SECRET: "s" }),
+    );
+    expect(razorpay).toBeInstanceOf(RazorpayGateway);
+    expect(razorpay.keyId).toBe("rzp_test_k");
   });
 });

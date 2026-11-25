@@ -4,6 +4,8 @@ import { Redis } from "ioredis";
 import { pino } from "pino";
 import type { ApiEnv } from "../env";
 import type { EventEnvelope, EventHandler } from "../platform/events";
+import { runAutopayRenewals } from "../billing/autopay-renewals";
+import { createGateway } from "../billing/gateway";
 import { runPaymentReminders } from "../billing/reminders";
 import { runMembershipLifecycle } from "../membership/lifecycle";
 import { runMaintenance } from "../platform/maintenance";
@@ -23,7 +25,7 @@ export interface WorkerOptions {
 
 export type WorkerHandle = Awaited<ReturnType<typeof createWorker>>;
 
-/** Background process: outbox relay, event handlers, hourly maintenance and membership upkeep. */
+/** Background process: outbox relay, event handlers, hourly maintenance, membership upkeep and AutoPay renewals. */
 export async function createWorker(
   env: ApiEnv,
   { extraHandlers = [], autostart = true }: WorkerOptions = {},
@@ -52,6 +54,7 @@ export async function createWorker(
     env.QUEUE_PREFIX,
   );
 
+  const gateway = createGateway(env);
   const maintenanceQueue = new Queue(MAINTENANCE_QUEUE, { connection, prefix: env.QUEUE_PREFIX });
   await maintenanceQueue.upsertJobScheduler(
     "maintenance-hourly",
@@ -64,6 +67,11 @@ export async function createWorker(
     { name: "payment-reminders" },
   );
   await maintenanceQueue.upsertJobScheduler(
+    "autopay-renewals-hourly",
+    { every: HOUR },
+    { name: "autopay-renewals" },
+  );
+  await maintenanceQueue.upsertJobScheduler(
     "membership-lifecycle-hourly",
     { every: HOUR },
     { name: "membership-lifecycle" },
@@ -74,9 +82,11 @@ export async function createWorker(
       const result =
         job.name === "membership-lifecycle"
           ? await runMembershipLifecycle(db.db)
-          : job.name === "payment-reminders"
-            ? await runPaymentReminders(db.db, env.DUNNING_GRACE_DAYS)
-            : await runMaintenance(db.db);
+          : job.name === "autopay-renewals"
+            ? await runAutopayRenewals(db.db, gateway)
+            : job.name === "payment-reminders"
+              ? await runPaymentReminders(db.db, env.DUNNING_GRACE_DAYS)
+              : await runMaintenance(db.db);
       logger.info({ job: job.name, ...result }, "scheduled job done");
     },
     { connection, prefix: env.QUEUE_PREFIX, autorun: false },
