@@ -19,6 +19,19 @@ afterAll(async () => {
   await dbh.pool.end();
 });
 
+/** A signed-in person who allowed the app to keep their health data (needed to save training). */
+async function trainee() {
+  const person = await signedInUser(api, dbh.db);
+  const consent = await api.inject({
+    method: "POST",
+    url: "/v1/me/consents",
+    headers: person.headers,
+    payload: { purpose: "health_data", granted: true, policyVersion: "2026-11" },
+  });
+  expect(consent.statusCode).toBe(201);
+  return person;
+}
+
 type Exercise = {
   id: string;
   name: string;
@@ -39,7 +52,7 @@ describe("exercise library", () => {
   });
 
   it("lists the shared library, searchable by name, muscle and equipment", async () => {
-    const me = await signedInUser(api, dbh.db);
+    const me = await trainee();
     const all = await get("/v1/exercises", me.headers);
     expect(all.length).toBeGreaterThanOrEqual(60);
     expect(all.every((e) => !e.mine)).toBe(true);
@@ -62,8 +75,8 @@ describe("exercise library", () => {
   });
 
   it("includes my own exercises but never someone else's", async () => {
-    const me = await signedInUser(api, dbh.db);
-    const other = await signedInUser(api, dbh.db);
+    const me = await trainee();
+    const other = await trainee();
     const own = (userId: string, name: string) => ({
       userId,
       name,
@@ -166,7 +179,7 @@ async function libraryId(slug: string) {
 
 describe("offline workout logging and sync", () => {
   it("a workout logged with no signal arrives intact once the phone is back online", async () => {
-    const me = await signedInUser(api, dbh.db);
+    const me = await trainee();
     const phone = new OfflinePhone(me.headers);
     const bench = await libraryId("barbell-bench-press");
     const myExercise = phone.record({
@@ -219,8 +232,8 @@ describe("offline workout logging and sync", () => {
   });
 
   it("keeps the server's own time and owner, whatever the phone claims", async () => {
-    const me = await signedInUser(api, dbh.db);
-    const other = await signedInUser(api, dbh.db);
+    const me = await trainee();
+    const other = await trainee();
     const before = Date.now();
     const id = v7();
     await upload(me.headers, [
@@ -242,7 +255,7 @@ describe("offline workout logging and sync", () => {
   });
 
   it("when two phones change the same set, the last change to reach the server wins", async () => {
-    const me = await signedInUser(api, dbh.db);
+    const me = await trainee();
     const phoneA = new OfflinePhone(me.headers);
     const workoutId = phoneA.startWorkout("Pull day");
     const setId = phoneA.logSet(workoutId, await libraryId("barbell-row"), 1, 10, 50);
@@ -269,7 +282,7 @@ describe("offline workout logging and sync", () => {
   });
 
   it("skips changes to rows another phone already deleted instead of blocking the queue", async () => {
-    const me = await signedInUser(api, dbh.db);
+    const me = await trainee();
     const phoneA = new OfflinePhone(me.headers);
     const workoutId = phoneA.startWorkout("Arms");
     const setId = phoneA.logSet(workoutId, await libraryId("barbell-curl"), 1, 10, 30);
@@ -287,7 +300,7 @@ describe("offline workout logging and sync", () => {
   });
 
   it("archives my own exercise instead of deleting it, so old sets keep it", async () => {
-    const me = await signedInUser(api, dbh.db);
+    const me = await trainee();
     const phone = new OfflinePhone(me.headers);
     const exerciseId = phone.record({
       op: "PUT",
@@ -315,8 +328,8 @@ describe("offline workout logging and sync", () => {
   });
 
   it("never lets one person read, change or add to another person's training", async () => {
-    const alice = await signedInUser(api, dbh.db);
-    const mallory = await signedInUser(api, dbh.db);
+    const alice = await trainee();
+    const mallory = await trainee();
     const phone = new OfflinePhone(alice.headers);
     const workoutId = phone.startWorkout("Alice's legs");
     const setId = phone.logSet(workoutId, await libraryId("barbell-back-squat"), 1, 5, 100);
@@ -369,7 +382,7 @@ describe("offline workout logging and sync", () => {
   });
 
   it("rejects a batch with an unknown table or a bad value, applying none of it", async () => {
-    const me = await signedInUser(api, dbh.db);
+    const me = await trainee();
     const phone = new OfflinePhone(me.headers);
     const workoutId = phone.startWorkout("Back");
     phone.logSet(workoutId, await libraryId("barbell-deadlift"), 1, 5, -20);
@@ -389,7 +402,7 @@ describe("offline workout logging and sync", () => {
 
 describe("sync service sign-in", () => {
   it("publishes the key that verifies the app's access tokens", async () => {
-    const me = await signedInUser(api, dbh.db);
+    const me = await trainee();
     const res = await api.inject({ method: "GET", url: "/v1/auth/jwks" });
     expect(res.statusCode).toBe(200);
     const jwks = res.json() as { keys: { kid: string; d?: string }[] };
@@ -426,8 +439,8 @@ describe("personal records", () => {
   }
 
   it("are found when sets sync, beaten by better sets and announced once per new best", async () => {
-    const me = await signedInUser(api, dbh.db);
-    const other = await signedInUser(api, dbh.db);
+    const me = await trainee();
+    const other = await trainee();
     const bench = await libraryId("barbell-bench-press");
     const phone = new OfflinePhone(me.headers);
 
@@ -493,8 +506,8 @@ describe("personal records", () => {
 
 describe("body measurements", () => {
   it("are logged offline, synced, and visible only to their owner", async () => {
-    const me = await signedInUser(api, dbh.db);
-    const other = await signedInUser(api, dbh.db);
+    const me = await trainee();
+    const other = await trainee();
     const phone = new OfflinePhone(me.headers);
     const measure = (kind: string, value: number, measuredAt: string) =>
       phone.record({
@@ -538,5 +551,56 @@ describe("body measurements", () => {
       { op: "PATCH", type: "body_metrics", id: latest, data: { value: -1 } },
     ]);
     expect(negative.statusCode).toBe(400);
+  });
+});
+
+describe("health data consent", () => {
+  it("is needed to save training, and withdrawing it erases the health data", async () => {
+    const without = await signedInUser(api, dbh.db);
+    const blocked = await upload(without.headers, [
+      {
+        op: "PUT",
+        type: "workouts",
+        id: v7(),
+        data: { name: "Legs", started_at: new Date().toISOString() },
+      },
+    ]);
+    expect(blocked.statusCode).toBe(403);
+
+    const me = await trainee();
+    const phone = new OfflinePhone(me.headers);
+    const workoutId = phone.startWorkout("Push");
+    phone.logSet(workoutId, await libraryId("barbell-bench-press"), 1, 5, 60);
+    phone.record({
+      op: "PUT",
+      type: "body_metrics",
+      id: v7(),
+      data: { kind: "weight_kg", value: 70, measured_at: new Date().toISOString() },
+    });
+    await phone.sync();
+    expect(await myWorkouts(me.headers)).toHaveLength(1);
+
+    const withdraw = await api.inject({
+      method: "POST",
+      url: "/v1/me/consents",
+      headers: me.headers,
+      payload: { purpose: "health_data", granted: false, policyVersion: "2026-11" },
+    });
+    expect(withdraw.statusCode).toBe(201);
+    expect(await myWorkouts(me.headers)).toEqual([]);
+    const metrics = await api.inject({
+      method: "GET",
+      url: "/v1/me/body-metrics",
+      headers: me.headers,
+    });
+    expect(metrics.json()).toEqual([]);
+    const records = await api.inject({
+      method: "GET",
+      url: "/v1/me/personal-records",
+      headers: me.headers,
+    });
+    expect(records.json()).toEqual([]);
+    phone.startWorkout("After withdrawing");
+    expect((await upload(me.headers, phone.queue)).statusCode).toBe(403);
   });
 });

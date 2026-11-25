@@ -17,6 +17,7 @@ import { CurrentAuth } from "../auth/auth.guard";
 import type { AuthContext } from "../auth/auth.types";
 import { contracts } from "../common/contracts";
 import { ZodPipe } from "../common/zod.pipe";
+import { hasHealthConsent } from "../auth/consents.controller";
 import { DB } from "../tokens";
 import { refreshRecords } from "./records";
 
@@ -252,10 +253,14 @@ export class SyncController {
 
   @Post()
   @HttpCode(200)
-  upload(
+  async upload(
     @CurrentAuth() auth: AuthContext,
     @Body(new ZodPipe(contracts.uploadSync.body)) body: z.output<typeof routes.uploadSync.body>,
   ): Promise<SyncResult> {
+    if (!(await hasHealthConsent(this.db.db, auth.userId)))
+      throw new ForbiddenException(
+        "Allow the app to keep your workout and body data (health data consent) to save it",
+      );
     return applySyncBatch(this.db.db, auth.userId, body.batch);
   }
 }
