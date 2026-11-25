@@ -6,12 +6,22 @@ import { ZodPipe } from "../common/zod.pipe";
 import { CurrentAuth, Public } from "./auth.guard";
 import type { AuthContext } from "./auth.types";
 import { SessionService } from "./session.service";
+import { TokenService } from "./token.service";
 
 type Out<K extends keyof typeof routes> = z.output<(typeof routes)[K]["response"]>;
 
 @Controller("auth")
 export class AuthController {
-  constructor(@Inject(SessionService) private readonly sessions: SessionService) {}
+  constructor(
+    @Inject(SessionService) private readonly sessions: SessionService,
+    @Inject(TokenService) private readonly tokens: TokenService,
+  ) {}
+
+  @Public()
+  @Get("jwks")
+  jwks(): Promise<Out<"getJwks">> {
+    return this.tokens.jwks();
+  }
 
   @Public()
   @Post("refresh")

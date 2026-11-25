@@ -1,6 +1,19 @@
 import { EXERCISE_TRACKING } from "@gym/domain";
 import { sql } from "drizzle-orm";
-import { boolean, index, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  doublePrecision,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { id, timestamps } from "../columns";
 import { users } from "./identity";
 
@@ -34,3 +47,78 @@ export const exercises = pgTable(
   },
   (t) => [uniqueIndex("exercises_slug_key").on(t.slug), index("exercises_user_idx").on(t.userId)],
 );
+
+const tz = { withTimezone: true } as const;
+
+/**
+ * Rows the app writes offline carry ids made on the phone (UUIDs), so a retried upload updates the same row
+ * instead of duplicating it. `updated_at` is always the server's time of the last accepted write.
+ */
+export const workouts = pgTable(
+  "workouts",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    startedAt: timestamp("started_at", tz).notNull(),
+    endedAt: timestamp("ended_at", tz),
+    notes: text("notes"),
+    /** The template it was started from, if any (no foreign key: templates can be deleted). */
+    templateId: uuid("template_id"),
+    ...timestamps,
+  },
+  (t) => [index("workouts_user_started_idx").on(t.userId, t.startedAt)],
+);
+
+export const SET_KINDS = ["normal", "warmup", "drop", "failure"] as const;
+
+/** One set. `user_id` repeats the workout's owner so access rules and sync need no join. */
+export const workoutSets = pgTable(
+  "workout_sets",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workoutId: uuid("workout_id")
+      .notNull()
+      .references(() => workouts.id, { onDelete: "cascade" }),
+    exerciseId: uuid("exercise_id")
+      .notNull()
+      .references(() => exercises.id),
+    position: smallint("position").notNull(),
+    kind: text("kind", { enum: SET_KINDS }).notNull().default("normal"),
+    reps: smallint("reps"),
+    weightKg: doublePrecision("weight_kg"),
+    rpe: doublePrecision("rpe"),
+    durationSeconds: integer("duration_seconds"),
+    distanceM: integer("distance_m"),
+    /** Set when the member ticks the set off; only completed sets count towards records. */
+    completedAt: timestamp("completed_at", tz),
+    ...timestamps,
+  },
+  (t) => [
+    index("workout_sets_workout_idx").on(t.workoutId),
+    index("workout_sets_user_exercise_idx").on(t.userId, t.exerciseId),
+    check(
+      "workout_sets_values_non_negative",
+      sql`${t.reps} >= 0 and ${t.weightKg} >= 0 and ${t.durationSeconds} >= 0 and ${t.distanceM} >= 0`,
+    ),
+  ],
+);
+
+/** A reusable workout plan: [{ exercise_id, sets, reps?, weight_kg?, rest_seconds? }]. */
+export const workoutTemplates = pgTable("workout_templates", {
+  id: id(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  notes: text("notes"),
+  exercises: jsonb("exercises")
+    .notNull()
+    .default(sql`'[]'`),
+  ...timestamps,
+});

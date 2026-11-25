@@ -1,0 +1,20 @@
+# PowerSync sync rules: what each phone downloads into its local SQLite database.
+# The service reads the "powersync" publication (see migrations) with a replication role that bypasses RLS,
+# so these WHERE clauses are the only thing keeping one person's data off another person's phone.
+# packages/db/src/sync-rules.test.ts runs every query below against a real database to check exactly that.
+# Phones authenticate with their normal API access token; PowerSync verifies it against GET /v1/auth/jwks.
+# Phones never write through PowerSync: local changes are uploaded to POST /v1/me/sync.
+bucket_definitions:
+  # Everyone gets the shared exercise library.
+  exercise_library:
+    data:
+      - SELECT * FROM exercises WHERE user_id IS NULL
+
+  # A person's own training data. request.user_id() is the "sub" of the verified access token.
+  my_training:
+    parameters: SELECT request.user_id() AS user_id
+    data:
+      - SELECT * FROM exercises WHERE user_id = bucket.user_id
+      - SELECT * FROM workouts WHERE user_id = bucket.user_id
+      - SELECT * FROM workout_sets WHERE user_id = bucket.user_id
+      - SELECT * FROM workout_templates WHERE user_id = bucket.user_id

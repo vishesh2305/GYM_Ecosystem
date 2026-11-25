@@ -358,6 +358,20 @@
       "when": 1795610478823,
       "tag": "0050_exercises_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1795610737042,
+      "tag": "0051_workouts",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1795610737363,
+      "tag": "0052_workouts_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,26 @@ export const tokenPair = z.object({
   expiresIn: z.number().int(),
 });
 
+export const getJwks = defineRoute({
+  method: "GET",
+  path: "/v1/auth/jwks",
+  summary:
+    "Public keys that sign access tokens (JWKS), for services such as PowerSync that verify tokens themselves",
+  tag: "auth",
+  response: z.object({
+    keys: z.array(
+      z.object({
+        kty: z.literal("OKP"),
+        crv: z.literal("Ed25519"),
+        x: z.string(),
+        kid: z.string(),
+        alg: z.literal("EdDSA"),
+        use: z.literal("sig"),
+      }),
+    ),
+  }),
+});
+
 export const refreshSession = defineRoute({
   method: "POST",
   path: "/v1/auth/refresh",

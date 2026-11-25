@@ -12,9 +12,11 @@ const claimsSchema = z.object({ sub: z.uuid(), sid: z.uuid(), amr: z.array(z.str
 @Injectable()
 export class TokenService {
   private readonly keys: Promise<{ privateKey: CryptoKey; publicKey: CryptoKey; kid: string }>;
+  private readonly publicJwk: Omit<ApiEnv["JWT_PRIVATE_JWK"], "d">;
 
   constructor(@Inject(ENV) private readonly env: ApiEnv) {
     const { d: _private, ...publicJwk } = env.JWT_PRIVATE_JWK;
+    this.publicJwk = publicJwk;
     this.keys = Promise.all([
       importJWK(env.JWT_PRIVATE_JWK, "EdDSA") as Promise<CryptoKey>,
       importJWK(publicJwk, "EdDSA") as Promise<CryptoKey>,
@@ -24,6 +26,19 @@ export class TokenService {
 
   get accessTtlSeconds(): number {
     return this.env.ACCESS_TOKEN_TTL_SECONDS;
+  }
+
+  /**
+   * The public half of the signing key, so other services (the PowerSync sync service) can verify access
+   * tokens themselves. Tokens carry this key's thumbprint as their "kid".
+   */
+  async jwks() {
+    const { kid } = await this.keys;
+    return {
+      keys: [
+        { kty: "OKP", crv: "Ed25519", x: this.publicJwk.x, kid, alg: "EdDSA", use: "sig" } as const,
+      ],
+    };
   }
 
   async issueAccess(auth: AuthContext): Promise<string> {

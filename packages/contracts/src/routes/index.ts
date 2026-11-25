@@ -21,6 +21,7 @@ import {
   listSessions,
   setupTotp,
   verifyMfa,
+  getJwks,
   refreshSession,
   requestOtp,
   revokeSession,
@@ -80,7 +81,7 @@ import {
   updateClass,
 } from "./scheduling";
 import { health, ready } from "./system";
-import { listExercises } from "./training";
+import { listExercises, listMyWorkouts, uploadSync } from "./training";
 import {
   acceptInvite,
   inviteStaff,
@@ -105,6 +106,7 @@ export const routes = {
   requestOtp,
   verifyOtp,
   signInWithProvider,
+  getJwks,
   refreshSession,
   signOut,
   signOutEverywhere,
@@ -145,6 +147,8 @@ export const routes = {
   markAttendance,
   bookPersonalTraining,
   listExercises,
+  uploadSync,
+  listMyWorkouts,
   getMe,
   updateMe,
   listConsents,
