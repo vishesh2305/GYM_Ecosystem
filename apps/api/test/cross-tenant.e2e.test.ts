@@ -3,6 +3,8 @@ import { createDb, withTenant, type DbHandle } from "@gym/db";
 import { eq } from "@gym/db/orm";
 import {
   branches,
+  checkIns,
+  kiosks,
   members,
   memberships,
   organisations,
@@ -27,6 +29,7 @@ const SAMPLE_BODIES: Record<string, object> = {
   updateOrganisation: { name: "Taken over" },
   createBranch: { name: "Intruder branch", city: "Pune" },
   createKiosk: { name: "Intruder kiosk" },
+  deskCheckIn: { memberId: "00000000-0000-7000-8000-000000000000" },
   updateBranch: { name: "Renamed by intruder" },
   inviteStaff: { channel: "sms", phone: "+919000000001", role: "trainer" },
   updateStaff: { role: "trainer" },
@@ -68,6 +71,8 @@ async function snapshot() {
     plans: await tx.select().from(plans),
     members: await tx.select().from(members),
     memberships: await tx.select().from(memberships),
+    kiosks: await tx.select().from(kiosks),
+    checkIns: await tx.select().from(checkIns),
   }));
 }
 
@@ -179,6 +184,24 @@ beforeAll(async () => {
       payload: { method: "cash", amountPaise: 1000 },
     })
   ).json().id;
+  victim.kioskId = (
+    await api.inject({
+      method: "POST",
+      url: `${base}/branches/${victim.branchId}/kiosks`,
+      headers: victimOwner.headers,
+      payload: { name: "Victim door" },
+    })
+  ).json().id;
+  const visit = (
+    await api.inject({
+      method: "POST",
+      url: `${base}/branches/${victim.branchId}/check-ins`,
+      headers: victimOwner.headers,
+      payload: { memberId: victim.memberId },
+    })
+  ).json();
+  victim.checkInId = visit.visit?.id ?? "";
+  expect(victim.checkInId).not.toBe("");
 
   const attacker = await signedInStaff(api, dbh.db, { name: "Attacker owner" });
   attackerHeaders = attacker.headers;

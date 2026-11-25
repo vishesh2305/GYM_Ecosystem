@@ -6,3 +6,4 @@ export * from "./plans";
 export * from "./membership";
 export * from "./ledger";
 export * from "./invoicing";
+export * from "./access";

@@ -77,3 +77,85 @@ export const getKiosk = defineRoute({
   tag: "access",
   response: z.object({ id: z.uuid(), orgId: z.uuid(), branchId: z.uuid(), name: z.string() }),
 });
+
+export const visit = z.object({
+  id: z.uuid(),
+  branchId: z.uuid(),
+  memberId: z.uuid(),
+  method: z.enum(["qr", "desk"]),
+  checkedInAt: z.iso.datetime(),
+  checkedOutAt: z.iso.datetime().nullable(),
+});
+
+const checkInResult = z.object({
+  allowed: z.boolean(),
+  /** Why not, when allowed is false. */
+  reason: z
+    .enum([
+      "invalid_code",
+      "code_already_used",
+      "no_active_membership",
+      "membership_paused",
+      "wrong_branch",
+      "dues_unpaid",
+    ])
+    .nullable(),
+  member: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+  visit: visit.nullable(),
+});
+
+export const kioskCheckIn = defineRoute({
+  method: "POST",
+  path: "/v1/kiosk/check-ins",
+  summary:
+    "For check-in devices: check a member in with the QR code from their gym pass (a refusal is a normal answer with a reason)",
+  tag: "access",
+  body: z.object({ code: z.string().max(100) }),
+  response: checkInResult,
+});
+
+export const deskCheckIn = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/branches/{branchId}/check-ins",
+  summary: "Check a member in at the front desk, with the same rules as the kiosk",
+  tag: "access",
+  params: z.object({ orgId: z.uuid(), branchId: z.uuid() }),
+  body: z.object({ memberId: z.uuid() }),
+  response: checkInResult,
+});
+
+export const checkOut = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/check-ins/{checkInId}/check-out",
+  summary: "Record that a member has left",
+  tag: "access",
+  params: z.object({ orgId: z.uuid(), checkInId: z.uuid() }),
+  response: visit,
+});
+
+export const listMemberCheckIns = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/members/{memberId}/check-ins",
+  summary: "A member's latest 50 visits, newest first",
+  tag: "access",
+  params: z.object({ orgId: z.uuid(), memberId: z.uuid() }),
+  response: z.array(visit),
+});
+
+export const checkMeOut = defineRoute({
+  method: "POST",
+  path: "/v1/me/gyms/{orgId}/check-out",
+  summary: "I am leaving the gym (404 when I am not checked in)",
+  tag: "me",
+  params: myGymParams,
+  response: visit,
+});
+
+export const listMyCheckIns = defineRoute({
+  method: "GET",
+  path: "/v1/me/gyms/{orgId}/check-ins",
+  summary: "My latest 50 visits at this gym, newest first",
+  tag: "me",
+  params: myGymParams,
+  response: z.array(visit),
+});

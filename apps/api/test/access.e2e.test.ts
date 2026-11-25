@@ -1,20 +1,25 @@
 import { createDb, withTenant, type DbHandle } from "@gym/db";
 import { eq } from "@gym/db/orm";
-import { members } from "@gym/db/schema";
+import { invoices, members, memberships } from "@gym/db/schema";
+import { addDays } from "@gym/domain";
 import { Secret, TOTP } from "otpauth";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { checkPassCode } from "../src/access/passes";
 import { createApp } from "../src/app";
+import { createWorker, type WorkerHandle } from "../src/worker/create-worker";
 import { gymWithMember, signedInUser, testEnv } from "./helpers";
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
 let dbh: DbHandle;
+let worker: WorkerHandle;
 
 beforeAll(async () => {
   ({ app: api } = await createApp(testEnv()));
   dbh = createDb(testEnv().DATABASE_URL);
+  worker = await createWorker(testEnv({ OUTBOX_POLL_MS: "50" }));
 });
 afterAll(async () => {
+  await worker.close();
   await api.close();
   await dbh.pool.end();
 });
@@ -235,5 +240,178 @@ describe("check-in devices", () => {
     expect(
       (await asManager("POST", `/branches/${other.id}/kiosks`, { name: "Side door" })).statusCode,
     ).toBe(201);
+  });
+});
+
+/** A member with a running membership, their pass, and a check-in device at their branch. */
+async function readyToEnter(plan: object = {}) {
+  const t = await memberWithPass();
+  const planId = (await t.g.plan(plan)).id;
+  const enrolled = await t.g.call("POST", `${t.g.base}/members/${t.member.id}/memberships`, {
+    planId,
+  });
+  expect(enrolled.statusCode).toBe(201);
+  const kiosk = (
+    await t.g.call("POST", `${t.g.base}/branches/${t.g.branch.id}/kiosks`, { name: "Door" })
+  ).json();
+  const scan = (code: string, token: string = kiosk.token) =>
+    api.inject({
+      method: "POST",
+      url: "/v1/kiosk/check-ins",
+      headers: { "x-kiosk-token": token },
+      payload: { code },
+    });
+  const desk = (branchId: string, memberId = t.member.id, headers = t.g.owner.headers) =>
+    api.inject({
+      method: "POST",
+      url: `${t.g.base}/branches/${branchId}/check-ins`,
+      headers,
+      payload: { memberId },
+    });
+  return { ...t, planId, membership: enrolled.json(), kiosk, scan, desk };
+}
+
+describe("checking in", () => {
+  it("lets a member in with their QR code once per code, without counting them twice", async () => {
+    const t = await readyToEnter();
+    const now = new Date();
+    const first = await t.scan(t.qr(now));
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toMatchObject({
+      allowed: true,
+      reason: null,
+      member: { id: t.member.id, name: "Asha" },
+      visit: { method: "qr", branchId: t.g.branch.id, checkedOutAt: null },
+    });
+    expect((await t.scan(t.qr(now))).json()).toMatchObject({
+      allowed: false,
+      reason: "code_already_used",
+      member: null,
+    });
+    const again = (await t.scan(t.qr(new Date(now.getTime() + 30_000)))).json();
+    expect(again.visit.id).toBe(first.json().visit.id);
+    expect((await t.scan("nonsense")).json()).toMatchObject({ reason: "invalid_code" });
+    expect((await t.scan(t.qr(now), "kio.bad")).statusCode).toBe(401);
+  });
+
+  it("turns members away with the reason: no membership, paused, wrong branch, unpaid dues", async () => {
+    const noPlan = await memberWithPass();
+    const kiosk = (
+      await noPlan.g.call("POST", `${noPlan.g.base}/branches/${noPlan.g.branch.id}/kiosks`, {
+        name: "Door",
+      })
+    ).json();
+    const denied = await api.inject({
+      method: "POST",
+      url: "/v1/kiosk/check-ins",
+      headers: { "x-kiosk-token": kiosk.token },
+      payload: { code: noPlan.qr(new Date()) },
+    });
+    expect(denied.json()).toMatchObject({
+      allowed: false,
+      reason: "no_active_membership",
+      member: { id: noPlan.member.id },
+      visit: null,
+    });
+
+    const paused = await readyToEnter();
+    await withTenant(dbh.db, paused.orgId, (tx) =>
+      tx
+        .update(memberships)
+        .set({ status: "frozen" })
+        .where(eq(memberships.id, paused.membership.id)),
+    );
+    expect((await paused.desk(paused.g.branch.id)).json().reason).toBe("membership_paused");
+
+    const local = await readyToEnter();
+    const other = (
+      await local.g.call("POST", `${local.g.base}/branches`, { name: "Second", city: "Pune" })
+    ).json();
+    await local.g.call("PATCH", `${local.g.base}/plans/${local.planId}`, {
+      branchIds: [local.g.branch.id],
+    });
+    expect((await local.desk(other.id)).json().reason).toBe("wrong_branch");
+    expect((await local.desk(local.g.branch.id)).json().allowed).toBe(true);
+
+    const owing = await readyToEnter();
+    await vi.waitFor(
+      async () => {
+        const list = (
+          await owing.g.call("GET", `${owing.g.base}/members/${owing.member.id}/invoices`)
+        ).json();
+        expect(list).toHaveLength(1);
+      },
+      { timeout: 15_000, interval: 100 },
+    );
+    await withTenant(dbh.db, owing.orgId, (tx) =>
+      tx
+        .update(invoices)
+        .set({ dueDate: addDays(new Date().toISOString().slice(0, 10), -3) })
+        .where(eq(invoices.memberId, owing.member.id)),
+    );
+    expect((await owing.desk(owing.g.branch.id)).json().reason).toBe("dues_unpaid");
+  });
+
+  it("front desk can check members in at their branches; trainers and other gyms cannot", async () => {
+    const t = await readyToEnter();
+    const desk = await t.g.staff("front_desk");
+    expect((await t.desk(t.g.branch.id, t.member.id, desk.headers)).json()).toMatchObject({
+      allowed: true,
+      visit: { method: "desk" },
+    });
+    const trainer = await t.g.staff("trainer");
+    expect((await t.desk(t.g.branch.id, t.member.id, trainer.headers)).statusCode).toBe(403);
+    const elsewhere = await gymWithMember(api, dbh.db);
+    expect((await t.desk(t.g.branch.id, elsewhere.member.id)).statusCode).toBe(404);
+    const other = (
+      await t.g.call("POST", `${t.g.base}/branches`, { name: "Second", city: "Pune" })
+    ).json();
+    const sideDesk = await t.g.staff("front_desk", [other.id]);
+    expect((await t.desk(t.g.branch.id, t.member.id, sideDesk.headers)).statusCode).toBe(404);
+  });
+
+  it("moves a member who walks into another branch, and records leaving", async () => {
+    const t = await readyToEnter();
+    const other = (
+      await t.g.call("POST", `${t.g.base}/branches`, { name: "Second", city: "Pune" })
+    ).json();
+    const first = (await t.desk(t.g.branch.id)).json().visit;
+    const second = (await t.desk(other.id)).json().visit;
+    expect(second.id).not.toBe(first.id);
+    const history = (await t.g.call("GET", `${t.g.base}/members/${t.member.id}/check-ins`)).json();
+    expect(history.map((v: { id: string }) => v.id)).toEqual([second.id, first.id]);
+    expect(history[1].checkedOutAt).not.toBeNull();
+
+    const out = await t.g.call("POST", `${t.g.base}/check-ins/${second.id}/check-out`);
+    expect(out.json().checkedOutAt).not.toBeNull();
+    const twice = await t.g.call("POST", `${t.g.base}/check-ins/${second.id}/check-out`);
+    expect(twice.json().checkedOutAt).toBe(out.json().checkedOutAt);
+  });
+
+  it("lets members check themselves out and see their visits", async () => {
+    const t = await readyToEnter();
+    const visit = (await t.desk(t.g.branch.id)).json().visit;
+    const url = `/v1/me/gyms/${t.orgId}`;
+    const out = await api.inject({
+      method: "POST",
+      url: `${url}/check-out`,
+      headers: t.me.headers,
+    });
+    expect(out.json()).toMatchObject({ id: visit.id });
+    expect(out.json().checkedOutAt).not.toBeNull();
+    expect(
+      (await api.inject({ method: "POST", url: `${url}/check-out`, headers: t.me.headers }))
+        .statusCode,
+    ).toBe(404);
+    expect((await get(`${url}/check-ins`, t.me.headers)).json()).toHaveLength(1);
+  });
+
+  it("many simultaneous check-ins of one member make one visit", async () => {
+    const t = await readyToEnter();
+    const results = await Promise.all(
+      Array.from({ length: 30 }, () => t.desk(t.g.branch.id).then((r) => r.json())),
+    );
+    expect(results.every((r) => r.allowed)).toBe(true);
+    expect(new Set(results.map((r) => r.visit.id)).size).toBe(1);
   });
 });
