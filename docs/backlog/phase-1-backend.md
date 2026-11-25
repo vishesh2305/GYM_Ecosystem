@@ -39,9 +39,9 @@ Launch assumption: India (INR, GST, UPI, WhatsApp, DPDP Act). Status of each sto
 
 ## Access (A11)
 
-- **AC-1 Rotating QR.** Member QR changes every 30 s; ±1 window clock skew; each code accepted once.
-- **AC-2 Kiosk check-in.** Kiosk device authenticated per branch; check-in denied with reason (expired, unpaid, wrong branch).
-- **AC-3 Occupancy.** Live count per branch published within 1 s of check-in/out; auto check-out after configurable hours.
+- **AC-1 Rotating QR.** Member QR changes every 30 s; ±1 window clock skew; each code accepted once. Done in A11 (ADR 013).
+- **AC-2 Kiosk check-in.** Kiosk device authenticated per branch; check-in denied with reason (expired, unpaid, wrong branch). Done in A11 (ADR 013).
+- **AC-3 Occupancy.** Live count per branch published within 1 s of check-in/out; auto check-out after configurable hours. Done in A11 (ADR 013).
 
 ## Scheduling (A12)
 
