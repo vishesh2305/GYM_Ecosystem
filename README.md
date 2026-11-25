@@ -37,8 +37,16 @@ packages/
   config/      zod-validated environment loading
   contracts/   route contracts (zod): server validation, OpenAPI, typed client
   db/          Drizzle schema, migrations, tenant scope (RLS), column helpers
-docs/adr/      architecture decision records
-docs/backlog/  user stories with acceptance criteria
+infra/
+  terraform/     AWS and Supabase for staging and production (setup guide in its README)
+  observability/ dashboards, and a local monitoring stack (docker compose --profile observability)
+  synthetics/    the sign-in, check-in and payment check Grafana runs every 10 minutes
+  backup/        daily backup and the restore drill
+  deploy/        the deploy script used by .github/workflows/deploy.yml
+docs/adr/        architecture decision records
+docs/backlog/    user stories with acceptance criteria
+docs/compliance/ DPDP Act checklist
+docs/runbooks/   restoring the database, handling incidents and data breaches
 ```
 
 ## Rules

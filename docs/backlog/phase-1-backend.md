@@ -59,7 +59,7 @@ Launch assumption: India (INR, GST, UPI, WhatsApp, DPDP Act). Status of each sto
 
 - **NT-1 Templates and channels.** Push, WhatsApp, SMS, email via adapters; per-locale templates. Done in A14 (ADR 016).
 - **NT-2 Preferences and quiet hours.** Respected for every non-critical message. Done in A14 (ADR 016).
-- **NT-3 Journeys.** Renewal due (7/3/1 days), payment failed, class reminder (2 h), inactive 7 days. Done in A14 (ADR 016); staging run with sandbox providers in A17.
+- **NT-3 Journeys.** Renewal due (7/3/1 days), payment failed, class reminder (2 h), inactive 7 days. Done in A14 (ADR 016). Staging is defined in A17 (ADR 019); the run with sandbox providers happens once the cloud accounts exist.
 
 ## CRM and reports (A15)
 
