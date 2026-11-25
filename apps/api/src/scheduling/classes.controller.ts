@@ -234,7 +234,13 @@ export class ClassSessionsController {
       const rows = await tx
         .select()
         .from(classSessions)
-        .where(and(range, query.branchId ? eq(classSessions.branchId, query.branchId) : undefined))
+        .where(
+          and(
+            range,
+            query.branchId ? eq(classSessions.branchId, query.branchId) : undefined,
+            query.instructorId ? eq(classSessions.instructorId, query.instructorId) : undefined,
+          ),
+        )
         .orderBy(asc(classSessions.startsAt));
       return sessionsWithPlaces(
         tx,

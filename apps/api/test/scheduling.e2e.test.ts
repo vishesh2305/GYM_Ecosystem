@@ -509,3 +509,91 @@ describe("attendance and no-shows", () => {
     }
   });
 });
+
+describe("personal training", () => {
+  async function ptSetup() {
+    const g = await gymWithMember(api, dbh.db);
+    const orgId = g.base.split("/").at(-1) ?? "";
+    const [memberId, otherMemberId] = await g.membersWithMembership(2);
+    const trainer = await g.staff("trainer");
+    const url = `${g.base}/branches/${g.branch.id}/pt-sessions`;
+    const at = (hoursAhead: number) => new Date(Date.now() + hoursAhead * 3_600_000).toISOString();
+    const bookPt = (body: object, headers = g.owner.headers) =>
+      api.inject({
+        method: "POST",
+        url,
+        headers,
+        payload: {
+          memberId,
+          trainerId: trainer.staffId,
+          startsAt: at(24),
+          durationMinutes: 60,
+          ...body,
+        },
+      });
+    return { g, orgId, memberId, otherMemberId, trainer, at, bookPt };
+  }
+
+  it("books a one-to-one session and keeps the trainer from being double-booked", async () => {
+    const t = await ptSetup();
+    const res = await t.bookPt({});
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toMatchObject({
+      session: {
+        kind: "pt",
+        capacity: 1,
+        instructorId: t.trainer.staffId,
+        name: "Personal training",
+      },
+      booking: { status: "confirmed", memberId: t.memberId },
+    });
+    expect((await t.bookPt({ memberId: t.otherMemberId, startsAt: t.at(24.5) })).statusCode).toBe(
+      409,
+    );
+    expect((await t.bookPt({ memberId: t.otherMemberId, startsAt: t.at(25) })).statusCode).toBe(
+      201,
+    );
+
+    const mine = (
+      await t.g.call("GET", `${t.g.base}/sessions?instructorId=${t.trainer.staffId}&to=${t.at(48)}`)
+    ).json();
+    expect(mine).toHaveLength(2);
+  });
+
+  it("lets only one of many simultaneous requests take the same slot", async () => {
+    const t = await ptSetup();
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => t.bookPt({ startsAt: t.at(30) }).then((r) => r.statusCode)),
+    );
+    expect(results.filter((s) => s === 201)).toHaveLength(1);
+    expect(results.filter((s) => s === 409)).toHaveLength(9);
+  });
+
+  it("cancelling frees the trainer's time; trainers book only for themselves", async () => {
+    const t = await ptSetup();
+    const first = (await t.bookPt({ startsAt: t.at(40) })).json();
+    await t.g.call("POST", `${t.g.base}/bookings/${first.booking.id}/cancel`);
+    const [session] = await withTenant(dbh.db, t.orgId, (tx) =>
+      tx.select().from(classSessions).where(eq(classSessions.id, first.session.id)),
+    );
+    expect(session?.status).toBe("cancelled");
+    expect((await t.bookPt({ startsAt: t.at(40) }, t.trainer.headers)).statusCode).toBe(201);
+
+    const colleague = await t.g.staff("trainer");
+    expect(
+      (await t.bookPt({ trainerId: colleague.staffId, startsAt: t.at(50) }, t.trainer.headers))
+        .statusCode,
+    ).toBe(403);
+  });
+
+  it("applies the membership rules and leaves nothing behind when refused", async () => {
+    const t = await ptSetup();
+    expect((await t.bookPt({ memberId: t.g.member.id, startsAt: t.at(60) })).statusCode).toBe(400);
+    expect((await t.bookPt({ startsAt: t.at(-1) })).statusCode).toBe(400);
+    expect((await t.bookPt({ trainerId: t.memberId, startsAt: t.at(60) })).statusCode).toBe(400);
+    const leftovers = await withTenant(dbh.db, t.orgId, (tx) =>
+      tx.select().from(classSessions).where(eq(classSessions.kind, "pt")),
+    );
+    expect(leftovers).toHaveLength(0);
+  });
+});

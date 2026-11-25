@@ -263,7 +263,13 @@ export async function cancel(
     .set({ status: late ? "late_cancelled" : "cancelled", cancelledAt: now })
     .where(eq(bookings.id, current.id))
     .returning();
-  if (current.status === "confirmed") await fillPlaces(tx, session, now);
+  if (session.kind === "pt")
+    // A one-to-one session without its member is off, which frees the trainer's time.
+    await tx
+      .update(classSessions)
+      .set({ status: "cancelled", cancelReason: "The booking was cancelled" })
+      .where(eq(classSessions.id, session.id));
+  else if (current.status === "confirmed") await fillPlaces(tx, session, now);
   return toBooking(row ?? current);
 }
 

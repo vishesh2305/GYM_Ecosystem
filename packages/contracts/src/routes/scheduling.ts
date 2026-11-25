@@ -111,6 +111,8 @@ export const listClassSessions = defineRoute({
   params: orgParams,
   query: z.object({
     branchId: z.uuid().optional(),
+    /** Only this trainer's or instructor's sessions. */
+    instructorId: z.uuid().optional(),
     from: z.iso.datetime().optional(),
     to: z.iso.datetime().optional(),
   }),
@@ -224,4 +226,23 @@ export const markAttendance = defineRoute({
   params: bookingParams,
   body: z.object({ attended: z.boolean() }),
   response: booking,
+});
+
+export const bookPersonalTraining = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/branches/{branchId}/pt-sessions",
+  summary:
+    "Book a one-to-one personal training session for a member with a trainer (refused if the trainer is busy then)",
+  tag: "classes",
+  params: z.object({ orgId: z.uuid(), branchId: z.uuid() }),
+  body: z.object({
+    memberId: z.uuid(),
+    trainerId: z.uuid(),
+    startsAt: z.iso.datetime(),
+    durationMinutes: z.number().int().min(15).max(180),
+    name: z.string().trim().min(1).max(80).default("Personal training"),
+    cancelWindowMinutes: z.number().int().min(0).max(2880).default(720),
+  }),
+  response: z.object({ session: classSession, booking }),
+  status: 201,
 });

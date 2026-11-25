@@ -161,12 +161,13 @@ export async function gymWithMember(
       branchIds: string[] = [],
     ) => {
       const person = await signedInStaff(app, db);
-      await withTenant(db, created.organisation.id, (tx) =>
+      const [row] = await withTenant(db, created.organisation.id, (tx) =>
         tx
           .insert(staffMembers)
-          .values({ tenantId: created.organisation.id, userId: person.user.id, role, branchIds }),
+          .values({ tenantId: created.organisation.id, userId: person.user.id, role, branchIds })
+          .returning({ id: staffMembers.id }),
       );
-      return person;
+      return { ...person, staffId: row?.id ?? "" };
     },
     enrol: (planId: string, startDate?: string) =>
       call("POST", `${base}/members/${member.id}/memberships`, {

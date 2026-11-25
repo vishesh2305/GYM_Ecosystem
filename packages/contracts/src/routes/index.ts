@@ -65,6 +65,7 @@ import {
 import {
   archiveClass,
   bookMySession,
+  bookPersonalTraining,
   bookSession,
   cancelBooking,
   cancelMyBooking,
@@ -141,6 +142,7 @@ export const routes = {
   listMyBookings,
   cancelMyBooking,
   markAttendance,
+  bookPersonalTraining,
   getMe,
   updateMe,
   listConsents,
