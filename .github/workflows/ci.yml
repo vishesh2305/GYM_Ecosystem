@@ -39,6 +39,14 @@ jobs:
           git diff --exit-code -- apps/api/openapi.json
       - run: pnpm audit --audit-level high
 
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the server image and check it migrates, starts and is ready
+        run: apps/api/scripts/smoke-image.sh
+
   api-breaking-changes:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
