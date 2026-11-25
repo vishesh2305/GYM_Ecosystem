@@ -44,6 +44,7 @@ import {
   getAutopay,
   cancelAutopay,
 } from "./billing";
+import { listAdminGyms, listFeatureFlags, reviewGymKyc, setFeatureFlag } from "./admin";
 import { listConsents, recordConsent } from "./consents";
 import {
   bookLeadTrial,
@@ -260,4 +261,8 @@ export const routes = {
   listPrivacyRequests,
   downloadDataExport,
   requestErasure,
+  listAdminGyms,
+  reviewGymKyc,
+  listFeatureFlags,
+  setFeatureFlag,
 };

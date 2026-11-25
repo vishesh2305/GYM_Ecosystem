@@ -8,6 +8,7 @@ import {
   classSessions,
   memberships,
   otpChallenges,
+  platformAdmins,
   recoveryCodes,
   staffMembers,
   userMfa,
@@ -65,6 +66,7 @@ async function personWithEverything(gym: Gym, workplace: Gym, name: string) {
     .values({ userId, provider: "google", subject: `g-${digits()}`, email });
   await dbh.db.insert(userMfa).values({ userId, totpSecretEnc: "encrypted" });
   await dbh.db.insert(recoveryCodes).values({ userId, codeHash: "hashed" });
+  await dbh.db.insert(platformAdmins).values({ userId, note: "test" });
   await as("POST", "/v1/me/consents", {
     purpose: "health_data",
     granted: true,

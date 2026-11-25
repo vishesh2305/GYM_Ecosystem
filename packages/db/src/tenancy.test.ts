@@ -3,7 +3,7 @@ import { v7 } from "uuid";
 import { eq } from "drizzle-orm";
 import { createDb, type DbHandle } from "./client";
 import { branches, organisations, staffMembers, users } from "./schema";
-import { withSystem, withTenant, withUser } from "./tenant";
+import { withAdmin, withPrivacy, withSystem, withTenant, withUser } from "./tenant";
 
 let handle: DbHandle;
 const orgA = v7();
@@ -133,5 +133,26 @@ describe("system scope (withSystem) for background jobs", () => {
     await expect(denied("update organisations set timezone = 'UTC'")).rejects.toThrow(
       /permission denied/,
     );
+  });
+});
+
+describe("privacy and admin scopes", () => {
+  it("withPrivacy finds one person's rows in every gym", async () => {
+    const jobs = await withPrivacy(handle.db, (tx) =>
+      tx.select().from(staffMembers).where(eq(staffMembers.userId, carol)),
+    );
+    expect(jobs.map((j) => j.tenantId).sort()).toEqual([orgA, orgB].sort());
+  });
+
+  it("withAdmin sees every gym but cannot change who works there", async () => {
+    const gyms = await withAdmin(handle.db, (tx) =>
+      tx.select({ id: organisations.id }).from(organisations),
+    );
+    expect(gyms.map((g) => g.id)).toEqual(expect.arrayContaining([orgA, orgB]));
+    await expect(
+      withAdmin(handle.db, (tx) =>
+        tx.update(staffMembers).set({ role: "trainer" }).where(eq(staffMembers.userId, alice)),
+      ),
+    ).rejects.toMatchObject({ cause: { code: "42501" } });
   });
 });

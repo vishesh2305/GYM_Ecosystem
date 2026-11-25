@@ -34,6 +34,7 @@ export const PERSONAL_DATA = {
   user_mfa: { holds: "two-step verification secret", subject: "user", erasure: "delete" },
   recovery_codes: { holds: "recovery code hashes", subject: "user", erasure: "delete" },
   consents: { holds: "consent decisions, IP address, device", subject: "user", erasure: "delete" },
+  platform_admins: { holds: "who runs the platform", subject: "user", erasure: "delete" },
   push_devices: { holds: "phone push tokens", subject: "user", erasure: "delete" },
   staff_members: { holds: "the person's jobs at gyms", subject: "user", erasure: "delete" },
   staff_invites: { holds: "invited phone or email", subject: "user", erasure: "delete" },

@@ -18,6 +18,12 @@ export const organisations = pgTable("organisations", {
   published: boolean("published").notNull().default(false),
   /** A short introduction shown on the public page. */
   about: text("about"),
+  /** Platform onboarding check of the business (KYC), set by platform admins. */
+  kycStatus: text("kyc_status", { enum: ["pending", "verified", "rejected"] })
+    .notNull()
+    .default("pending"),
+  kycNote: text("kyc_note"),
+  kycReviewedAt: timestamp("kyc_reviewed_at", { withTimezone: true }),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   ...timestamps,
   ...softDelete,

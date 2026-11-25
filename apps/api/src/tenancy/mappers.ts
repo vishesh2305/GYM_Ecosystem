@@ -18,6 +18,7 @@ export const toOrganisation = (
   slug: org.slug,
   published: org.published,
   about: org.about,
+  kycStatus: org.kycStatus,
   createdAt: org.createdAt.toISOString(),
   myRole,
 });

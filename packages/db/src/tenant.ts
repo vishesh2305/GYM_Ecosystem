@@ -67,3 +67,14 @@ export async function withPrivacy<T>(db: Database, fn: (tx: Tx) => Promise<T>): 
     return fn(tx);
   });
 }
+
+/**
+ * Cross-tenant access for the platform admin console only, behind the platform-admin guard. Runs as `app_admin`,
+ * which may read what the console shows and change only KYC reviews and feature flags.
+ */
+export async function withAdmin<T>(db: Database, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`set local role app_admin`);
+    return fn(tx);
+  });
+}

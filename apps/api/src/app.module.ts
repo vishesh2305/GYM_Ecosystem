@@ -1,6 +1,7 @@
 import { Module, type DynamicModule, type Type } from "@nestjs/common";
 import type { Redis } from "ioredis";
 import { AccessModule } from "./access/access.module";
+import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
 import { BillingModule } from "./billing/billing.module";
 import { DocsController } from "./docs.controller";
@@ -36,6 +37,7 @@ export class AppModule {
         CrmModule,
         ReportsModule,
         PrivacyModule,
+        AdminModule,
         ...modules,
       ],
       controllers: [HealthController, DocsController],

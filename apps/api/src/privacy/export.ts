@@ -24,6 +24,7 @@ import {
   otpChallenges,
   payments,
   personalRecords,
+  platformAdmins,
   privacyRequests,
   pushDevices,
   recoveryCodes,
@@ -111,6 +112,10 @@ export async function collectPersonalData(tx: Tx, userId: string) {
     recovery_codes: await tx.select().from(recoveryCodes).where(eq(recoveryCodes.userId, userId)),
     consents: await tx.select().from(consents).where(eq(consents.userId, userId)),
     push_devices: await tx.select().from(pushDevices).where(eq(pushDevices.userId, userId)),
+    platform_admins: await tx
+      .select()
+      .from(platformAdmins)
+      .where(eq(platformAdmins.userId, userId)),
     staff_members: await tx.select().from(staffMembers).where(eq(staffMembers.userId, userId)),
     staff_invites: await tx
       .select()

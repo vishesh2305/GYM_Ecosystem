@@ -39,6 +39,8 @@ export const organisation = z.object({
   slug: z.string().nullable(),
   published: z.boolean(),
   about: z.string().nullable(),
+  /** The platform's business verification of the gym. */
+  kycStatus: z.enum(["pending", "verified", "rejected"]),
   createdAt: z.iso.datetime(),
   myRole: staffRole,
 });

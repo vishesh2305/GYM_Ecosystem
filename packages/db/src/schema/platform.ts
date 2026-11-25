@@ -13,6 +13,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { id } from "../columns";
+import { users } from "./identity";
 
 const tz = { withTimezone: true } as const;
 
@@ -109,3 +110,12 @@ export const featureFlags = pgTable(
   },
   (t) => [check("feature_flags_rollout_range", sql`${t.rolloutPercent} between 0 and 100`)],
 );
+
+/** People who run the platform itself (support, onboarding). Added by hand in the database, never by the API. */
+export const platformAdmins = pgTable("platform_admins", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  note: text("note"),
+  grantedAt: timestamp("granted_at", tz).notNull().defaultNow(),
+});
