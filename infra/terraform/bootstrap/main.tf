@@ -70,8 +70,18 @@ resource "aws_ecr_repository" "api" {
   }
 }
 
+#trivy:ignore:AVD-AWS-0033 The AWS-managed key encrypts images.
+resource "aws_ecr_repository" "backup" {
+  name                 = "gym-backup"
+  image_tag_mutability = "IMMUTABLE"
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
 resource "aws_ecr_lifecycle_policy" "api" {
-  repository = aws_ecr_repository.api.name
+  for_each   = { api = aws_ecr_repository.api.name, backup = aws_ecr_repository.backup.name }
+  repository = each.value
   policy = jsonencode({
     rules = [{
       rulePriority = 1
@@ -123,7 +133,7 @@ resource "aws_iam_role_policy" "deploy" {
           "ecr:DescribeImages", "ecr:GetDownloadUrlForLayer", "ecr:InitiateLayerUpload", "ecr:PutImage",
           "ecr:UploadLayerPart",
         ]
-        Resource = aws_ecr_repository.api.arn
+        Resource = [aws_ecr_repository.api.arn, aws_ecr_repository.backup.arn]
       },
       {
         # These ECS actions do not support resource-level permissions.
@@ -164,6 +174,10 @@ output "state_bucket" {
 
 output "image_repository" {
   value = aws_ecr_repository.api.repository_url
+}
+
+output "backup_image_repository" {
+  value = aws_ecr_repository.backup.repository_url
 }
 
 output "deploy_role_arn" {

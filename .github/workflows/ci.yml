@@ -46,6 +46,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build the server image and check it migrates, starts and is ready
         run: apps/api/scripts/smoke-image.sh
+      - name: Back up a database, restore it into a throwaway server and check every row
+        run: infra/backup/test-drill.sh
 
   terraform:
     runs-on: ubuntu-latest

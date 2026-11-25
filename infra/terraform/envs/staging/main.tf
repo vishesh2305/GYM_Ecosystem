@@ -28,6 +28,11 @@ variable "image" {
   type        = string
 }
 
+variable "backup_image" {
+  description = "Image of infra/backup, e.g. <account>.dkr.ecr.ap-south-1.amazonaws.com/gym-backup:<git sha>."
+  type        = string
+}
+
 variable "alert_email" {
   type = string
 }
@@ -64,16 +69,27 @@ provider "aws" {
   }
 }
 
+# Backups are copied to Hyderabad: a second region that keeps the data in India.
+provider "aws" {
+  alias  = "hyderabad"
+  region = "ap-south-2"
+  default_tags {
+    tags = { Project = "gym-platform", Environment = "staging", ManagedBy = "terraform" }
+  }
+}
+
 provider "supabase" {}
 provider "grafana" {}
 
 module "stack" {
   source              = "../../modules/stack"
+  providers           = { aws = aws, aws.replica = aws.hyderabad }
   name                = "gym-staging"
   deploy_env          = "staging"
   zone_name           = var.zone_name
   api_domain          = "api.${var.zone_name}"
   image               = var.image
+  backup_image        = var.backup_image
   single_nat_gateway  = true
   deletion_protection = false
   log_retention_days  = 14

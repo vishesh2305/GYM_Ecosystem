@@ -4,6 +4,7 @@
 # Repository variables (Settings > Secrets and variables > Actions > Variables), from infra/terraform/bootstrap:
 #   AWS_DEPLOY_ROLE_ARN   deploy_role_arn output
 #   ECR_REPOSITORY        image_repository output
+#   ECR_BACKUP_REPOSITORY backup_image_repository output
 # Variables of the environments "staging" and "production", from `terraform output deploy` of each:
 #   ECS_CLUSTER, TASK_SUBNETS (comma-separated), TASK_SECURITY_GROUP, API_URL
 # Until AWS_DEPLOY_ROLE_ARN is set, the workflow skips itself (no cloud yet).
@@ -64,6 +65,15 @@ jobs:
           else
             docker build -f apps/api/Dockerfile --build-arg RELEASE="${IMAGE##*:}" -t "$IMAGE" .
             docker push "$IMAGE"
+          fi
+      - name: Build and push the backup image (Terraform's backup_image points at a tag of it)
+        env:
+          IMAGE: ${{ vars.ECR_BACKUP_REPOSITORY }}
+        run: |
+          tag=$(git rev-parse HEAD)
+          if ! aws ecr describe-images --repository-name gym-backup --image-ids "imageTag=$tag" >/dev/null 2>&1; then
+            docker build -t "$IMAGE:$tag" infra/backup
+            docker push "$IMAGE:$tag"
           fi
 
   staging:

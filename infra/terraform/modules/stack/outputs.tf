@@ -44,6 +44,10 @@ output "files_bucket" {
   value = aws_s3_bucket.files.bucket
 }
 
+output "backups_bucket" {
+  value = aws_s3_bucket.backups.bucket
+}
+
 output "files_cdn_domain" {
   value = aws_cloudfront_distribution.files.domain_name
 }

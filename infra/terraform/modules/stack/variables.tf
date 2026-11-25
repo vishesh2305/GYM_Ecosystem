@@ -102,6 +102,17 @@ variable "alarm_email" {
   type        = string
 }
 
+variable "backup_image" {
+  description = "Image of infra/backup (backup and restore drill), e.g. <registry>/gym-backup:<git sha>."
+  type        = string
+}
+
+variable "backup_disk_gib" {
+  description = "Task disk for the restore drill; at least twice the database size."
+  type        = number
+  default     = 30
+}
+
 variable "deletion_protection" {
   type    = bool
   default = true

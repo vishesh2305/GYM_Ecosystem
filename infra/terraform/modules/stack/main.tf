@@ -3,7 +3,11 @@
 terraform {
   required_version = ">= 1.10"
   required_providers {
-    aws    = { source = "hashicorp/aws", version = "~> 6.20" }
+    aws = {
+      source                = "hashicorp/aws"
+      version               = "~> 6.20"
+      configuration_aliases = [aws.replica] # Hyderabad, for the backup copy
+    }
     random = { source = "hashicorp/random", version = "~> 3.7" }
   }
 }

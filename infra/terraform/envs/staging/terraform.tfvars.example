@@ -2,6 +2,7 @@
 # staging-only test values.
 zone_name                = "staging.example.in"
 image                    = "<account>.dkr.ecr.ap-south-1.amazonaws.com/gym-api:<git sha>"
+backup_image             = "<account>.dkr.ecr.ap-south-1.amazonaws.com/gym-backup:<git sha>"
 alert_email              = "alerts@example.in"
 supabase_organization_id = "<supabase organisation slug>"
 admin_cidrs              = []

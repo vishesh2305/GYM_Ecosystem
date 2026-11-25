@@ -27,11 +27,12 @@ data stays in India (ADR 019).
 
 1. **Bootstrap** (local state; keep the file safe):
    `cd bootstrap && terraform init && terraform apply`. Note `state_bucket`, `image_repository`,
-   `deploy_role_arn`.
+   `backup_image_repository`, `deploy_role_arn`.
 2. **GitHub**: create the environments `staging` and `production` (production: required reviewers), and set
    the repository variables listed at the top of `.github/workflows/deploy.yml`.
-3. **First image**: run the deploy workflow once (Actions > Deploy > Run workflow); its build step pushes
-   `gym-api:<sha>` even though there is nothing to deploy to yet.
+3. **First images**: run the deploy workflow once (Actions > Deploy > Run workflow); its build step pushes
+   `gym-api:<sha>` and `gym-backup:<sha>` even though there is nothing to deploy to yet. Use those tags for
+   `image` and `backup_image` (when `infra/backup` changes later, point `backup_image` at a newer tag).
 4. **Staging**:
    ```sh
    cd envs/staging
@@ -56,6 +57,14 @@ data stays in India (ADR 019).
    `.github/workflows/deploy.yml`); it prints the kiosk token for `synthetic_flows`. Then `terraform apply`
    again with `synthetic_flows` filled in.
 8. **Production**: steps 4 to 6 in `envs/production`, without test numbers or demo data.
+
+## Backups
+
+Three layers: Supabase's daily backups, its point-in-time recovery (production add-on, about 2 minutes of
+data at risk), and our own daily logical backup (`infra/backup`, 02:30 IST) kept 35 days in Mumbai and copied
+to Hyderabad. Every Sunday the restore drill restores the newest backup into a throwaway server, checks
+every table row for row and logs the time taken; a failure emails the alarm address. How to restore for
+real: `docs/runbooks/restore.md`.
 
 ## Checks before every change
 
