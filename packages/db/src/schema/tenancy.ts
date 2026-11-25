@@ -1,4 +1,13 @@
-import { boolean, index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { id, softDelete, timestamps } from "../columns";
 import { users } from "./identity";
@@ -104,4 +113,29 @@ export const staffInvites = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("staff_invites_tenant_idx").on(t.tenantId)],
+);
+
+/**
+ * A gym owner's permission for the platform's support team to look at the gym's data (read only) until it
+ * expires or is revoked. Every request made under it is written to the audit log.
+ */
+export const supportGrants = pgTable(
+  "support_grants",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    grantedBy: uuid("granted_by")
+      .notNull()
+      .references(() => staffMembers.id),
+    reason: text("reason").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    /** How often support looked, and when last: shown to the owner (the full trail is in the audit log). */
+    views: integer("views").notNull().default(0),
+    lastViewedAt: timestamp("last_viewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("support_grants_tenant_idx").on(t.tenantId, t.expiresAt)],
 );

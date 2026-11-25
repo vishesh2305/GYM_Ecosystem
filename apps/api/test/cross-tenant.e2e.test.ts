@@ -62,6 +62,7 @@ const SAMPLE_BODIES: Record<string, object> = {
   updateLead: { stage: "lost", lostReason: "Intruder" },
   bookLeadTrial: { startsAt: "2099-01-01T05:00:00.000Z" },
   createLeadTask: { title: "Intruder task", dueAt: "2099-01-01T05:00:00.000Z" },
+  grantSupportAccess: { hours: 1, reason: "Intruder support" },
   updateBranch: { name: "Renamed by intruder" },
   inviteStaff: { channel: "sms", phone: "+919000000001", role: "trainer" },
   updateStaff: { role: "trainer" },
@@ -290,6 +291,15 @@ beforeAll(async () => {
     })
   ).json().id;
   expect(victim.taskId).toBeTruthy();
+  victim.grantId = (
+    await api.inject({
+      method: "POST",
+      url: `${base}/support-access`,
+      headers: victimOwner.headers,
+      payload: { hours: 1, reason: "Help with invoices" },
+    })
+  ).json().id;
+  expect(victim.grantId).toBeTruthy();
   expect(victim.checkInId).not.toBe("");
 
   const attacker = await signedInStaff(api, dbh.db, { name: "Attacker owner" });

@@ -4,6 +4,7 @@ import { BranchesController } from "./branches.controller";
 import { OrganisationController, OrganisationsController } from "./organisations.controller";
 import { InvitesController, StaffController } from "./staff.controller";
 import { StaffService } from "./staff.service";
+import { SupportAccessController } from "./support-access.controller";
 import { TenantGuard } from "./tenant.guard";
 
 @Module({
@@ -14,6 +15,7 @@ import { TenantGuard } from "./tenant.guard";
     BranchesController,
     StaffController,
     InvitesController,
+    SupportAccessController,
   ],
   providers: [TenantGuard, StaffService],
 })

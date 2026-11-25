@@ -252,3 +252,48 @@ export const removeStaff = defineRoute({
   response: z.undefined(),
   status: 204,
 });
+
+export const supportGrant = z.object({
+  id: z.uuid(),
+  reason: z.string(),
+  expiresAt: z.iso.datetime(),
+  revokedAt: z.iso.datetime().nullable(),
+  /** How many requests support made under this grant, and the last one. */
+  views: z.number().int(),
+  lastViewedAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+});
+
+export const grantSupportAccess = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/support-access",
+  summary:
+    "Owner: let the platform's support team look at this gym's data (read only) for a few hours; every look is audited",
+  tag: "organisations",
+  params: orgParams,
+  body: z.object({
+    hours: z.number().int().min(1).max(72),
+    reason: z.string().trim().min(3).max(300),
+  }),
+  response: supportGrant,
+  status: 201,
+});
+
+export const listSupportAccess = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/support-access",
+  summary: "Owner: support access granted, newest first, with how often support looked",
+  tag: "organisations",
+  params: orgParams,
+  response: z.array(supportGrant),
+});
+
+export const revokeSupportAccess = defineRoute({
+  method: "DELETE",
+  path: "/v1/orgs/{orgId}/support-access/{grantId}",
+  summary: "Owner: end support access now",
+  tag: "organisations",
+  params: z.object({ orgId: z.uuid(), grantId: z.uuid() }),
+  response: z.undefined(),
+  status: 204,
+});

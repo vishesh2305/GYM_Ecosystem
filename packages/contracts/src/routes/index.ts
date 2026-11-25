@@ -136,6 +136,9 @@ import {
   listMyOrganisations,
   updateBranch,
   updateOrganisation,
+  grantSupportAccess,
+  listSupportAccess,
+  revokeSupportAccess,
 } from "./tenancy";
 
 /** Every API operation. The key is the OpenAPI operationId. */
@@ -261,6 +264,9 @@ export const routes = {
   listPrivacyRequests,
   downloadDataExport,
   requestErasure,
+  grantSupportAccess,
+  listSupportAccess,
+  revokeSupportAccess,
   listAdminGyms,
   reviewGymKyc,
   listFeatureFlags,

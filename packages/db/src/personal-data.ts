@@ -152,4 +152,5 @@ export const NO_PERSONAL_DATA = [
   "kiosks",
   "feature_flags",
   "handled_events",
+  "support_grants",
 ] as const;
