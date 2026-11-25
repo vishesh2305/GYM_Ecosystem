@@ -98,7 +98,13 @@ import {
   removeDevice,
   updateMyNotificationPreferences,
 } from "./notifications";
-import { attendanceReport, duesReport, retentionReport, revenueReport } from "./reports";
+import {
+  attendanceReport,
+  duesReport,
+  retentionReport,
+  revenueReport,
+  summaryReport,
+} from "./reports";
 import { createEnquiry, getPublicGym, getPublicSchedule } from "./public";
 import { health, ready } from "./system";
 import {
@@ -240,6 +246,7 @@ export const routes = {
   duesReport,
   attendanceReport,
   retentionReport,
+  summaryReport,
   getPublicGym,
   getPublicSchedule,
   createEnquiry,

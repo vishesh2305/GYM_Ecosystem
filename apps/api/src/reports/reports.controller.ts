@@ -61,6 +61,43 @@ export class ReportsController {
     });
   }
 
+  @Get("summary")
+  summary(@CurrentTenant() tenant: TenantContext): Promise<Out<"summaryReport">> {
+    return this.read(tenant, async (tx, tz, today) => {
+      const [n] = await rows<Record<string, string>>(
+        tx,
+        sql`select
+          (select count(distinct member_id) from memberships
+            where status in ('active', 'trial') and start_date <= ${today}::date and end_date >= ${today}::date) as active,
+          (select count(distinct member_id) from memberships where status = 'frozen') as frozen,
+          (select count(*) from memberships m
+            where m.status in ('active', 'trial')
+              and m.end_date between ${today}::date and ${addDays(today, 7)}::date
+              and not exists (select 1 from memberships next
+                where next.member_id = m.member_id and next.id <> m.id and next.start_date > m.start_date
+                  and next.status in ('pending', 'trial', 'active'))) as renewals,
+          (select count(*) from (select member_id from memberships
+              where status not in ('pending', 'cancelled')
+              group by member_id
+              having date_trunc('month', min(start_date)) = date_trunc('month', ${today}::date)) f) as new_members,
+          (select count(*) from leads where stage not in ('won', 'lost')) as open_leads,
+          (select count(*) from check_ins where (checked_in_at at time zone ${tz})::date = ${today}::date) as visits,
+          (select coalesce(sum(total_paise - paid_paise), 0) from invoices
+            where kind = 'invoice' and status in ('issued', 'partially_paid')) as due`,
+      );
+      return {
+        asOf: today,
+        activeMembers: int(n?.active),
+        frozenMembers: int(n?.frozen),
+        renewalsDue7Days: int(n?.renewals),
+        newMembersThisMonth: int(n?.new_members),
+        openLeads: int(n?.open_leads),
+        visitsToday: int(n?.visits),
+        duePaise: int(n?.due),
+      };
+    });
+  }
+
   @Get("revenue")
   revenue(
     @CurrentTenant() tenant: TenantContext,

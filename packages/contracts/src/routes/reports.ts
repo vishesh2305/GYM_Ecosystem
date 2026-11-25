@@ -90,3 +90,24 @@ export const retentionReport = defineRoute({
     ),
   }),
 });
+
+export const summaryReport = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/reports/summary",
+  summary: "Today's key numbers for the owner dashboard, in the gym's time zone",
+  tag: "reports",
+  params: orgParams,
+  response: z.object({
+    asOf: z.iso.date(),
+    /** Members with a running (active or trial) membership today. */
+    activeMembers: z.number().int(),
+    frozenMembers: z.number().int(),
+    /** Running memberships ending in the next 7 days with nothing booked after them. */
+    renewalsDue7Days: z.number().int(),
+    /** Members whose first membership started this month. */
+    newMembersThisMonth: z.number().int(),
+    openLeads: z.number().int(),
+    visitsToday: z.number().int(),
+    duePaise: z.number().int(),
+  }),
+});

@@ -1,6 +1,6 @@
 import { createDb, withTenant, type DbHandle } from "@gym/db";
 import { eq } from "@gym/db/orm";
-import { checkIns, invoices, memberships, payments, refunds } from "@gym/db/schema";
+import { checkIns, invoices, leads, memberships, payments, refunds } from "@gym/db/schema";
 import { addDays, todayIn } from "@gym/domain";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
@@ -249,6 +249,86 @@ describe("retention", () => {
       { month: monthStart(2).slice(0, 7), members: 3, retained: [3, 1, 2] },
       { month: monthStart(0).slice(0, 7), members: 1, retained: [1] },
     ]);
+  });
+});
+
+describe("summary", () => {
+  it("gives today's key numbers for the owner dashboard", async () => {
+    const g = await gymWithMember(api, dbh.db);
+    const orgId = orgOf(g);
+    const today = todayIn(IST);
+    const ids = await g.membersWithMembership(5);
+    const [ending, frozen, old, renewed, plain] = ids as [string, string, string, string, string];
+    await withTenant(dbh.db, orgId, async (tx) => {
+      const update = (memberId: string, set: Partial<typeof memberships.$inferInsert>) =>
+        tx.update(memberships).set(set).where(eq(memberships.memberId, memberId));
+      // All started this month except `old`, which started three months ago and has expired.
+      await tx
+        .update(memberships)
+        .set({ startDate: today.slice(0, 8) + "01" })
+        .where(eq(memberships.tenantId, orgId));
+      await update(ending, { endDate: addDays(today, 3) });
+      await update(renewed, { endDate: addDays(today, 5) });
+      await update(frozen, { status: "frozen" });
+      await update(old, {
+        status: "expired",
+        startDate: addDays(today, -95),
+        endDate: addDays(today, -5),
+      });
+      const [current] = await tx
+        .select()
+        .from(memberships)
+        .where(eq(memberships.memberId, renewed));
+      if (!current) throw new Error("no membership");
+      const { id: _id, createdAt: _c, updatedAt: _u, ...copy } = current;
+      await tx.insert(memberships).values({
+        ...copy,
+        status: "pending",
+        startDate: addDays(today, 6),
+        endDate: addDays(today, 35),
+      });
+      await tx.insert(checkIns).values(
+        [plain, ending].map((memberId) => ({
+          tenantId: orgId,
+          branchId: g.branch.id,
+          memberId,
+          method: "desk" as const,
+          checkedInAt: new Date(),
+          checkedOutAt: new Date(),
+        })),
+      );
+      await tx.insert(leads).values([
+        {
+          tenantId: orgId,
+          branchId: g.branch.id,
+          name: "A",
+          phone: "+919811111111",
+          source: "walk_in",
+        },
+        {
+          tenantId: orgId,
+          branchId: g.branch.id,
+          name: "B",
+          phone: "+919822222222",
+          source: "walk_in",
+          stage: "lost",
+          lostReason: "x",
+        },
+      ]);
+    });
+    const invoice = await invoiceFor(g, 120_000);
+    await pay(g, invoice.id, "cash", 20_000);
+
+    expect(await report(g, "summary")).toEqual({
+      asOf: today,
+      activeMembers: 4, // ending, renewed, plain and the payer (frozen and expired do not count)
+      frozenMembers: 1,
+      renewalsDue7Days: 1, // ending; renewed already has its next membership booked
+      newMembersThisMonth: 5, // everyone but `old`
+      openLeads: 1,
+      visitsToday: 2,
+      duePaise: 100_000,
+    });
   });
 });
 
