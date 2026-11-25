@@ -1,0 +1,116 @@
+# Every commit on main that passes CI is built once and deployed to staging; the same image then waits for a
+# person to approve it in GitHub before it goes to production (environment protection rule on "production").
+#
+# Repository variables (Settings > Secrets and variables > Actions > Variables), from infra/terraform/bootstrap:
+#   AWS_DEPLOY_ROLE_ARN   deploy_role_arn output
+#   ECR_REPOSITORY        image_repository output
+# Variables of the environments "staging" and "production", from `terraform output deploy` of each:
+#   ECS_CLUSTER, TASK_SUBNETS (comma-separated), TASK_SECURITY_GROUP, API_URL
+# Until AWS_DEPLOY_ROLE_ARN is set, the workflow skips itself (no cloud yet).
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      staging_task:
+        description: One-off task on staging after migrating
+        type: choice
+        options: [none, seed-demo]
+        default: none
+
+permissions:
+  contents: read
+  id-token: write # AWS sign-in through OIDC; no AWS keys are stored in GitHub
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  build:
+    # Only pushes to this repository's main (a fork's branch named main must not deploy), only green CI.
+    if: >
+      vars.AWS_DEPLOY_ROLE_ARN != '' && (github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - id: image
+        run: echo "image=${{ vars.ECR_REPOSITORY }}:$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Build and push the image (once per commit; tags are immutable)
+        env:
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: |
+          if aws ecr describe-images --repository-name gym-api --image-ids "imageTag=${IMAGE##*:}" >/dev/null 2>&1; then
+            echo "$IMAGE already exists"
+          else
+            docker build -f apps/api/Dockerfile --build-arg RELEASE="${IMAGE##*:}" -t "$IMAGE" .
+            docker push "$IMAGE"
+          fi
+
+  staging:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ vars.API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Migrate and deploy
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          TASK_SUBNETS: ${{ vars.TASK_SUBNETS }}
+          TASK_SECURITY_GROUP: ${{ vars.TASK_SECURITY_GROUP }}
+          IMAGE: ${{ needs.build.outputs.image }}
+          TASK: ${{ inputs.staging_task == 'seed-demo' && 'seed-demo' || '' }}
+        run: infra/deploy/deploy.sh staging "$IMAGE" ${TASK:+"$TASK"}
+      - name: The API answers
+        run: curl -fsS --retry 5 --retry-delay 5 "${{ vars.API_URL }}/v1/ready"
+
+  production:
+    needs: [build, staging]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Migrate and deploy (blue/green)
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          TASK_SUBNETS: ${{ vars.TASK_SUBNETS }}
+          TASK_SECURITY_GROUP: ${{ vars.TASK_SECURITY_GROUP }}
+          IMAGE: ${{ needs.build.outputs.image }}
+        run: infra/deploy/deploy.sh production "$IMAGE"
+      - name: The API answers
+        run: curl -fsS --retry 5 --retry-delay 5 "${{ vars.API_URL }}/v1/ready"

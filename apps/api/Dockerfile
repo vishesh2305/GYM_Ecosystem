@@ -9,7 +9,9 @@ RUN --mount=type=cache,id=pnpm,target=/root/.cache/pnpm pnpm install --frozen-lo
   && pnpm --filter @gym/api deploy --prod --legacy /out
 
 FROM node:24-alpine
-ENV NODE_ENV=production
+# The git commit, so error reports say which release raised them (instrumentation.ts reads RELEASE).
+ARG RELEASE=dev
+ENV NODE_ENV=production RELEASE=$RELEASE
 WORKDIR /app
 COPY --from=build --chown=node:node /out ./
 COPY --from=build --chown=node:node /repo/packages/db/migrations ./migrations
