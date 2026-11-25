@@ -1,4 +1,6 @@
-import { metrics } from "@opentelemetry/api";
+import { context, metrics, trace, INVALID_SPAN_CONTEXT } from "@opentelemetry/api";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
+import { RPCType, setRPCMetadata, type RPCMetadata } from "@opentelemetry/core";
 import {
   AggregationTemporality,
   MeterProvider,
@@ -9,6 +11,7 @@ import { captureException } from "@sentry/node";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import { defineHandler } from "../src/platform/events";
+import { labelRoute } from "../src/platform/metrics";
 import { createWorker, type WorkerHandle } from "../src/worker/create-worker";
 import { testEnv } from "./helpers";
 import { TestModule, testDoomed } from "./test.module";
@@ -94,6 +97,24 @@ describe("metrics for the dashboards", () => {
         "idle",
         "waiting",
       ]);
+  });
+});
+
+describe("per-endpoint request metrics", () => {
+  it("label a request with the route it matched, and leave unmatched ones alone", () => {
+    context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+    const labelled = (route: string | undefined) => {
+      const rpc: RPCMetadata = {
+        type: RPCType.HTTP,
+        span: trace.wrapSpanContext(INVALID_SPAN_CONTEXT),
+      };
+      context.with(setRPCMetadata(context.active(), rpc), () => labelRoute(route));
+      return rpc.route;
+    };
+    expect(labelled("/v1/me/gyms/:orgId/pass")).toBe("/v1/me/gyms/:orgId/pass");
+    expect(labelled(undefined)).toBeUndefined();
+    labelRoute("/v1/health"); // outside an instrumented request: nothing to label, no error
+    context.disable();
   });
 });
 

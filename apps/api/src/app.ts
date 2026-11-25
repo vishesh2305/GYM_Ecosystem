@@ -11,6 +11,7 @@ import { AppModule } from "./app.module";
 import { TokenService } from "./auth/token.service";
 import { ProblemFilter } from "./common/problem.filter";
 import type { ApiEnv } from "./env";
+import { labelRoute } from "./platform/metrics";
 import { createRedis } from "./infra.module";
 
 const REQUEST_ID = /^[A-Za-z0-9._-]{8,64}$/;
@@ -56,6 +57,8 @@ export async function createApp(env: ApiEnv, options: CreateAppOptions = {}) {
 
   app.setGlobalPrefix("v1");
   app.useGlobalFilters(new ProblemFilter());
+
+  fastify.addHook("onRequest", async (request) => labelRoute(request.routeOptions.url));
 
   fastify.addHook("onSend", async (request, reply) => {
     void reply.header("x-request-id", request.id);

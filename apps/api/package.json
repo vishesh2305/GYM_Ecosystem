@@ -28,6 +28,7 @@
     "@nestjs/platform-fastify": "^12.6.0",
     "@opentelemetry/api": "^1.10.0",
     "@opentelemetry/auto-instrumentations-node": "^0.83.1",
+    "@opentelemetry/core": "^3.1.1",
     "@opentelemetry/instrumentation": "^0.301.2",
     "@opentelemetry/sdk-node": "^0.301.2",
     "@sentry/node": "^11.12.0",
@@ -46,6 +47,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@opentelemetry/context-async-hooks": "^3.1.1",
     "@opentelemetry/sdk-metrics": "^3.1.1",
     "@testcontainers/postgresql": "^12.2.2",
     "@types/nodemailer": "^8.0.2",

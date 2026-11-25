@@ -1,6 +1,7 @@
 import type { Database, DbHandle } from "@gym/db";
 import { sql } from "@gym/db/orm";
-import { metrics } from "@opentelemetry/api";
+import { context, metrics } from "@opentelemetry/api";
+import { getRPCMetadata, RPCType } from "@opentelemetry/core";
 import type { Queue } from "bullmq";
 
 // Gauges for the dashboards. Request rate, errors and latency come from the HTTP instrumentation; these add
@@ -54,4 +55,13 @@ export function observeOutbox(db: Database): void {
     },
     [backlog, oldest],
   );
+}
+
+/**
+ * Per-endpoint request metrics: tells the HTTP instrumentation which route matched, as its template (e.g.
+ * /v1/orgs/:orgId/members), never the raw URL. Unmatched requests stay unlabelled. Called on every request.
+ */
+export function labelRoute(route: string | undefined): void {
+  const rpc = getRPCMetadata(context.active());
+  if (rpc?.type === RPCType.HTTP && route) rpc.route = route;
 }

@@ -1,0 +1,16 @@
+# Local Grafana: the Prometheus data source and the dashboards in ./dashboards (the same JSON Terraform uploads
+# to Grafana Cloud). Mounted twice by docker-compose.yml, as a data source and as a dashboard provider.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+providers:
+  - name: gym
+    folder: Gym platform
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

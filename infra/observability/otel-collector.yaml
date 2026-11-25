@@ -1,0 +1,22 @@
+# Local stand-in for Grafana Cloud's OTLP endpoint: metrics become Prometheus series with the same names and
+# job label ("<service.namespace>/<service.name>") that Grafana Cloud gives them, so dashboards work in both.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [prometheus]
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
