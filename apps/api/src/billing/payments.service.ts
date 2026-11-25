@@ -10,6 +10,17 @@ import { recordAudit } from "../platform/audit";
 import { appendEvent, defineEvent } from "../platform/events";
 import type { TenantContext } from "../tenancy/tenant.guard";
 import { DB } from "../tokens";
+
+/** A card, UPI or AutoPay payment the gateway declined, so the member can be told and pay another way. */
+export const paymentFailed = defineEvent(
+  "payment.failed",
+  z.object({
+    paymentId: z.uuid(),
+    memberId: z.uuid(),
+    amountPaise: z.number().int(),
+    method: z.string(),
+  }),
+);
 import { postJournal } from "./ledger";
 
 export type PaymentOut = z.output<typeof routes.recordPayment.response>;

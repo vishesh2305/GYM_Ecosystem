@@ -12,7 +12,8 @@ import { addDays, daysBetween, LIVE_STATUSES, todayIn } from "@gym/domain";
 import { HttpException } from "@nestjs/common";
 import { sellPlan } from "../membership/memberships.service";
 import type { PaymentGateway } from "./gateway";
-import { lockPayableInvoice } from "./payments.service";
+import { appendEvent } from "../platform/events";
+import { lockPayableInvoice, paymentFailed } from "./payments.service";
 
 /** Renew this many days before the last day: UPI AutoPay notifies the member a day before each charge. */
 export const RENEW_DAYS_BEFORE = 3;
@@ -182,6 +183,12 @@ async function charge(
     } catch (error) {
       // The gateway refused or did not answer: count it as a failed try.
       await tx.update(payments).set({ status: "failed" }).where(eq(payments.id, pending.id));
+      await appendEvent(
+        tx,
+        paymentFailed,
+        { paymentId: pending.id, memberId: member.id, amountPaise: due, method: "autopay" },
+        tenantId,
+      );
       totals.failed += 1;
       totals.errors.push(
         `${invoice.number}: ${error instanceof Error ? error.message : "unknown"}`,

@@ -10,7 +10,13 @@ import type { TenantContext } from "../tenancy/tenant.guard";
 import { DB, ENV, PAYMENT_GATEWAY } from "../tokens";
 import { settleMandate } from "./autopay";
 import { verifyWebhookSignature, type PaymentGateway } from "./gateway";
-import { applyCapturedPayment, lockPayableInvoice, PaymentsService } from "./payments.service";
+import {
+  applyCapturedPayment,
+  lockPayableInvoice,
+  paymentFailed,
+  PaymentsService,
+} from "./payments.service";
+import { appendEvent } from "../platform/events";
 
 const webhookBody = z.object({
   event: z.string(),
@@ -119,10 +125,22 @@ export class OnlinePaymentsService {
         );
 
       if (event === "payment.failed") {
+        if (payment.status === "failed") return;
         await tx
           .update(payments)
           .set({ status: "failed", gatewayPaymentId: entity.id })
           .where(eq(payments.id, payment.id));
+        await appendEvent(
+          tx,
+          paymentFailed,
+          {
+            paymentId: payment.id,
+            memberId: payment.memberId,
+            amountPaise: payment.amountPaise,
+            method: payment.method,
+          },
+          tenantId,
+        );
         return;
       }
       if (entity.amount !== payment.amountPaise) {
