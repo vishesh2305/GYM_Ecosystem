@@ -31,7 +31,7 @@ Launch assumption: India (INR, GST, UPI, WhatsApp, DPDP Act). Status of each sto
 
 - **BL-1 Invoices.** Sequential number per branch per financial year; CGST/SGST or IGST split; PDF available.
 - **BL-2 Online payment.** Razorpay order → payment → webhook marks invoice paid; membership activates.
-- **BL-3 UPI AutoPay.** Mandate created at enrolment; renewals charged automatically; failure starts dunning.
+- **BL-3 UPI AutoPay.** Mandate created at enrolment; renewals charged automatically; failure starts dunning. Done in A10b (ADR 012).
 - **BL-4 Cash/manual payment.** Staff records cash/UPI-to-QR payments with reference; audited.
 - **BL-5 Refunds.** Partial or full; cannot exceed captured amount; ledger reversed.
 - **BL-6 Ledger.** Every money event writes balanced entries; property test proves balance after any sequence.

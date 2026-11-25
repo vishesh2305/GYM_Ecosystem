@@ -31,11 +31,25 @@ refunded through the gateway first. Journal Dr receivable / Cr cash, bank or cle
 step claimed with a conditional update so concurrent runs never duplicate), and after `DUNNING_GRACE_DAYS` the
 unpaid membership expires. Delivery (SMS, WhatsApp, email) comes with notifications (A14).
 
-**Gateways.** `PaymentGateway` port: Razorpay REST adapter (orders, refunds) and a fake adapter for development;
-production refuses the fake gateway and the default webhook secret.
+**UPI AutoPay.** Staff open `pay-autopay` on an invoice: one checkout pays what is due and asks the member to
+approve a mandate up to the invoice total per charge (valid 5 years, frequency "as presented"). The mandate is
+`pending` until the webhook captures that payment with a `token_id` (then `active`); a failure or a capture
+without a token marks it `failed`. At most one pending or active mandate per member; a new set-up replaces a
+pending one and is refused while one is active. Turning it off revokes the token at the gateway first.
+Renewals run hourly per gym: an active, non-trial membership ending within 3 days is sold again on the same plan
+from the day after it ends (`sellPlan`, no staff, `renewed_by_mandate_id` set), and its invoice is charged to the
+mandate (order + recurring payment; the result comes by the same webhook). A charge waiting for its webhook is
+never repeated; a refused charge is retried after 20 hours, 3 tries at most. Invoices above the approved limit
+are not charged. In every case the reminders and grace-day expiry above still apply to the unpaid invoice.
+
+**Gateways.** `PaymentGateway` port: Razorpay REST adapter (orders, refunds, customers, UPI AutoPay) and a fake
+adapter for development; production refuses the fake gateway and the default webhook secret. The adapter is
+tested against a local stand-in only: check every call with Razorpay test keys before going live.
 
 ## Not yet done
 
-- UPI AutoPay / recurring mandates (register mandate, confirm by webhook, charge on renewal, retries): next step.
+- AutoPay: members cancelling from their UPI app are seen only when the next charge fails (token webhooks are
+  not handled yet); a gateway call that succeeds while our transaction then fails leaves an unknown payment that
+  the webhook ignores; members turning AutoPay off themselves waits for the member app.
 - Settlement reconciliation (gateway_clearing → bank) and IGST for inter-state B2B buyers.
 - Member-facing payment from the app (needs member accounts linked to member records).
