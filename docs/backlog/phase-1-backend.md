@@ -63,9 +63,9 @@ Launch assumption: India (INR, GST, UPI, WhatsApp, DPDP Act). Status of each sto
 
 ## CRM and reports (A15)
 
-- **CR-1 Leads.** Capture from public gym page and walk-in; stages; follow-up tasks.
-- **CR-2 Owner reports.** Revenue, dues, attendance heatmap, active members, renewals due; numbers match seeded fixtures.
-- **CR-3 Public gym page API.** Plans, schedule, address; no private fields; cached.
+- **CR-1 Leads.** Capture from public gym page and walk-in; stages; follow-up tasks. Done in A15 (ADR 017).
+- **CR-2 Owner reports.** Revenue, dues, attendance heatmap, active members, renewals due; numbers match seeded fixtures. Done in A15 (ADR 017), plus retention cohorts.
+- **CR-3 Public gym page API.** Plans, schedule, address; no private fields; cached. Done in A15 (ADR 017); reviews wait for a reviews feature.
 
 ## Admin and privacy (A16)
 
