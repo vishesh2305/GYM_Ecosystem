@@ -33,6 +33,7 @@ import {
 import { DB, ENV } from "../tokens";
 import { authenticateKiosk } from "./kiosks";
 import { myMembership } from "./my-gyms";
+import { publishOccupancy } from "./occupancy";
 import { checkPassCode } from "./passes";
 
 type CheckInResult = z.output<typeof routes.deskCheckIn.response>;
@@ -63,6 +64,7 @@ export async function admit(
     method: Visit["method"];
     kioskId?: string;
     staffId?: string;
+    autoOutHours: number;
   },
 ): Promise<CheckInResult> {
   const [member] = await tx
@@ -101,7 +103,7 @@ export async function admit(
   });
   if (reason) return { allowed: false, reason, member, visit: null };
 
-  await tx
+  const moved = await tx
     .update(checkIns)
     .set({ checkedOutAt: new Date() })
     .where(
@@ -110,9 +112,10 @@ export async function admit(
         isNull(checkIns.checkedOutAt),
         ne(checkIns.branchId, entry.branchId),
       ),
-    );
+    )
+    .returning({ branchId: checkIns.branchId });
   // The one-open-visit index turns a simultaneous second scan into a no-op.
-  await tx
+  const inserted = await tx
     .insert(checkIns)
     .values({
       tenantId: entry.tenantId,
@@ -122,7 +125,15 @@ export async function admit(
       kioskId: entry.kioskId,
       checkedInBy: entry.staffId,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: checkIns.id });
+  if (inserted.length)
+    await publishOccupancy(
+      tx,
+      entry.tenantId,
+      [entry.branchId, ...moved.map((m) => m.branchId)],
+      entry.autoOutHours,
+    );
   const [open] = await tx
     .select()
     .from(checkIns)
@@ -132,14 +143,16 @@ export async function admit(
 }
 
 /** Mark a visit as ended now; ending one that already ended changes nothing. */
-async function leave(tx: Tx, visit: Visit): Promise<VisitOut> {
+async function leave(tx: Tx, visit: Visit, autoOutHours: number): Promise<VisitOut> {
   if (visit.checkedOutAt) return toVisit(visit);
   const [ended] = await tx
     .update(checkIns)
     .set({ checkedOutAt: new Date() })
     .where(and(eq(checkIns.id, visit.id), isNull(checkIns.checkedOutAt)))
     .returning();
-  return toVisit(ended ?? visit);
+  if (!ended) return toVisit(visit);
+  await publishOccupancy(tx, visit.tenantId, [visit.branchId], autoOutHours);
+  return toVisit(ended);
 }
 
 const history = (tx: Tx, memberId: string) =>
@@ -175,6 +188,7 @@ export class KioskCheckInsController {
         memberId: pass.memberId,
         method: "qr",
         kioskId: kiosk.id,
+        autoOutHours: this.env.CHECKIN_AUTO_OUT_HOURS,
       });
     });
   }
@@ -186,6 +200,7 @@ export class KioskCheckInsController {
 export class DeskCheckInsController {
   constructor(
     @Inject(DB) private readonly db: DbHandle,
+    @Inject(ENV) private readonly env: ApiEnv,
     @Inject(MembersService) private readonly members: MembersService,
   ) {}
 
@@ -210,6 +225,7 @@ export class DeskCheckInsController {
         memberId: body.memberId,
         method: "desk",
         staffId: tenant.staffId,
+        autoOutHours: this.env.CHECKIN_AUTO_OUT_HOURS,
       });
       if (!result.member) throw new NotFoundException("Member not found");
       return result;
@@ -226,7 +242,7 @@ export class DeskCheckInsController {
       const [visit] = await tx.select().from(checkIns).where(eq(checkIns.id, params.checkInId));
       if (!visit || !canUseBranch(tenant, visit.branchId))
         throw new NotFoundException("Visit not found");
-      return leave(tx, visit);
+      return leave(tx, visit, this.env.CHECKIN_AUTO_OUT_HOURS);
     });
   }
 
@@ -242,7 +258,10 @@ export class DeskCheckInsController {
 
 @Controller("me/gyms/:orgId")
 export class MyVisitsController {
-  constructor(@Inject(DB) private readonly db: DbHandle) {}
+  constructor(
+    @Inject(DB) private readonly db: DbHandle,
+    @Inject(ENV) private readonly env: ApiEnv,
+  ) {}
 
   @Post("check-out")
   @HttpCode(200)
@@ -257,7 +276,7 @@ export class MyVisitsController {
         .from(checkIns)
         .where(and(eq(checkIns.memberId, gym.memberId), isNull(checkIns.checkedOutAt)));
       if (!open) throw new NotFoundException("You are not checked in");
-      return leave(tx, open);
+      return leave(tx, open, this.env.CHECKIN_AUTO_OUT_HOURS);
     });
   }
 

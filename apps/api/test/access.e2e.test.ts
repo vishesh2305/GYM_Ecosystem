@@ -1,9 +1,10 @@
 import { createDb, withTenant, type DbHandle } from "@gym/db";
-import { eq } from "@gym/db/orm";
-import { invoices, members, memberships } from "@gym/db/schema";
+import { asc, eq } from "@gym/db/orm";
+import { checkIns, invoices, members, memberships, outboxEvents } from "@gym/db/schema";
 import { addDays } from "@gym/domain";
 import { Secret, TOTP } from "otpauth";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { runAutoCheckOut } from "../src/access/occupancy";
 import { checkPassCode } from "../src/access/passes";
 import { createApp } from "../src/app";
 import { createWorker, type WorkerHandle } from "../src/worker/create-worker";
@@ -14,7 +15,8 @@ let dbh: DbHandle;
 let worker: WorkerHandle;
 
 beforeAll(async () => {
-  ({ app: api } = await createApp(testEnv()));
+  // The parallel check-in test sends 1,000 requests as one owner.
+  ({ app: api } = await createApp(testEnv({ RATE_LIMIT_MAX: "5000" })));
   dbh = createDb(testEnv().DATABASE_URL);
   worker = await createWorker(testEnv({ OUTBOX_POLL_MS: "50" }));
 });
@@ -414,4 +416,125 @@ describe("checking in", () => {
     expect(results.every((r) => r.allowed)).toBe(true);
     expect(new Set(results.map((r) => r.visit.id)).size).toBe(1);
   });
+});
+
+const countAt = (body: { branches: { branchId: string; count: number }[] }, branchId: string) =>
+  body.branches.find((b) => b.branchId === branchId)?.count;
+
+describe("how busy each branch is", () => {
+  it("counts members inside per branch for staff and members, and publishes each change", async () => {
+    const t = await readyToEnter();
+    const friend = await memberWithPhone(t.g, randomPhone(), "Ravi");
+    await t.g.call("POST", `${t.g.base}/members/${friend.id}/memberships`, { planId: t.planId });
+    const other = (
+      await t.g.call("POST", `${t.g.base}/branches`, { name: "Second", city: "Pune" })
+    ).json();
+    const mine = (await t.desk(t.g.branch.id)).json().visit;
+    await t.desk(t.g.branch.id, friend.id);
+
+    const staffView = (await t.g.call("GET", `${t.g.base}/occupancy`)).json();
+    expect(countAt(staffView, t.g.branch.id)).toBe(2);
+    expect(countAt(staffView, other.id)).toBe(0);
+    const memberView = (await get(`/v1/me/gyms/${t.orgId}/occupancy`, t.me.headers)).json();
+    expect(countAt(memberView, t.g.branch.id)).toBe(2);
+
+    await t.g.call("POST", `${t.g.base}/check-ins/${mine.id}/check-out`);
+    expect(countAt((await t.g.call("GET", `${t.g.base}/occupancy`)).json(), t.g.branch.id)).toBe(1);
+
+    const events = await dbh.db
+      .select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.tenantId, t.orgId))
+      .orderBy(asc(outboxEvents.id));
+    const counts = events
+      .filter((e) => e.type === "branch.occupancy_changed")
+      .map((e) => (e.payload as { count: number }).count);
+    expect(counts).toEqual([1, 2, 1]);
+
+    const sideTrainer = await t.g.staff("trainer", [other.id]);
+    const trainerView = (
+      await api.inject({
+        method: "GET",
+        url: `${t.g.base}/occupancy`,
+        headers: sideTrainer.headers,
+      })
+    ).json();
+    expect(trainerView.branches.map((b: { branchId: string }) => b.branchId)).toEqual([other.id]);
+  });
+
+  it("stops counting a member who never checked out, and the hourly job records them leaving", async () => {
+    const t = await readyToEnter();
+    const visit = (await t.desk(t.g.branch.id)).json().visit;
+    const fourHoursAgo = new Date(Date.now() - 4 * 3_600_000);
+    await withTenant(dbh.db, t.orgId, (tx) =>
+      tx.update(checkIns).set({ checkedInAt: fourHoursAgo }).where(eq(checkIns.id, visit.id)),
+    );
+    expect(countAt((await t.g.call("GET", `${t.g.base}/occupancy`)).json(), t.g.branch.id)).toBe(0);
+
+    expect((await runAutoCheckOut(dbh.db, 3)).checkedOut).toBeGreaterThanOrEqual(1);
+    await runAutoCheckOut(dbh.db, 3);
+    const [ended] = await withTenant(dbh.db, t.orgId, (tx) =>
+      tx.select().from(checkIns).where(eq(checkIns.id, visit.id)),
+    );
+    expect(ended?.checkedOutAt?.getTime()).toBe(fourHoursAgo.getTime() + 3 * 3_600_000);
+    const keys = (await worker.maintenanceQueue.getJobSchedulers()).map((k) => k.key);
+    expect(keys).toContain("auto-check-out-hourly");
+  });
+
+  it(
+    "counts exactly 1,000 members checking in at the same time",
+    { timeout: 120_000 },
+    async () => {
+      const g = await gymWithMember(api, dbh.db);
+      const orgId = g.base.split("/").at(-1) ?? "";
+      const plan = await g.plan({});
+      const today = new Date().toISOString().slice(0, 10);
+      const ids = await withTenant(dbh.db, orgId, async (tx) => {
+        const people = await tx
+          .insert(members)
+          .values(
+            Array.from({ length: 1000 }, (_, i) => ({
+              tenantId: orgId,
+              name: `Member ${i}`,
+              homeBranchId: g.branch.id,
+            })),
+          )
+          .returning({ id: members.id });
+        await tx.insert(memberships).values(
+          people.map((p) => ({
+            tenantId: orgId,
+            memberId: p.id,
+            planId: plan.id,
+            planName: "Monthly",
+            status: "active" as const,
+            startDate: today,
+            endDate: addDays(today, 29),
+            isTrial: false,
+            pricePaise: 0,
+            joiningFeePaise: 0,
+            gstRateBps: 0,
+            gstPaise: 0,
+            totalPaise: 0,
+            maxFreezes: 0,
+            maxFreezeDays: 0,
+          })),
+        );
+        return people.map((p) => p.id);
+      });
+      const results = await Promise.all(
+        ids.map((memberId) =>
+          api
+            .inject({
+              method: "POST",
+              url: `${g.base}/branches/${g.branch.id}/check-ins`,
+              headers: g.owner.headers,
+              payload: { memberId },
+            })
+            .then((r) => r.json()),
+        ),
+      );
+      expect(results.filter((r) => r.allowed)).toHaveLength(1000);
+      expect(countAt((await g.call("GET", `${g.base}/occupancy`)).json(), g.branch.id)).toBe(1000);
+    },
+  );
 });

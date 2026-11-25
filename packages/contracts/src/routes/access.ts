@@ -159,3 +159,26 @@ export const listMyCheckIns = defineRoute({
   params: myGymParams,
   response: z.array(visit),
 });
+
+const occupancy = z.object({
+  asOf: z.iso.datetime(),
+  branches: z.array(z.object({ branchId: z.uuid(), name: z.string(), count: z.number().int() })),
+});
+
+export const getOccupancy = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/occupancy",
+  summary: "How many members are inside each branch right now",
+  tag: "access",
+  params: z.object({ orgId: z.uuid() }),
+  response: occupancy,
+});
+
+export const getMyGymOccupancy = defineRoute({
+  method: "GET",
+  path: "/v1/me/gyms/{orgId}/occupancy",
+  summary: "How busy each branch of my gym is right now",
+  tag: "me",
+  params: myGymParams,
+  response: occupancy,
+});
