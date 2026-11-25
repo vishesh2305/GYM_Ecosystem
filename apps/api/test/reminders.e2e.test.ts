@@ -1,5 +1,5 @@
 import { createDb, withTenant, type DbHandle } from "@gym/db";
-import { eq } from "@gym/db/orm";
+import { asc, eq } from "@gym/db/orm";
 import { invoices, memberships, outboxEvents } from "@gym/db/schema";
 import { addDays, todayIn } from "@gym/domain";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -66,6 +66,8 @@ const remindersFor = async (invoiceId: string) =>
       .select()
       .from(outboxEvents)
       .where(eq(outboxEvents.type, "invoice.payment_reminder"))
+      // Ids are UUIDv7, so this is the order they were raised in; without it Postgres may return any order.
+      .orderBy(asc(outboxEvents.id))
   ).filter((e) => (e.payload as { invoiceId: string }).invoiceId === invoiceId);
 
 describe("reminders for unpaid invoices", () => {
