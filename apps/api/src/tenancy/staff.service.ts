@@ -12,7 +12,8 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { hashToken } from "../common/crypto";
 import { validate } from "uuid";
 import type { z } from "zod";
 import type { EmailSender, SmsSender } from "../auth/senders";
@@ -37,7 +38,6 @@ const ROLE_NAMES: Record<StaffRole, string> = {
   front_desk: "front desk staff",
   trainer: "a trainer",
 };
-const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
 /** Staff invites and role management. A gym always keeps at least one active owner. */
 @Injectable()

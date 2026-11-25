@@ -26,6 +26,7 @@ import { signedInStaff, testEnv } from "./helpers";
 const SAMPLE_BODIES: Record<string, object> = {
   updateOrganisation: { name: "Taken over" },
   createBranch: { name: "Intruder branch", city: "Pune" },
+  createKiosk: { name: "Intruder kiosk" },
   updateBranch: { name: "Renamed by intruder" },
   inviteStaff: { channel: "sms", phone: "+919000000001", role: "trainer" },
   updateStaff: { role: "trainer" },

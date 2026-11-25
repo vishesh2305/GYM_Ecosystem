@@ -1,6 +1,6 @@
 import { parseEnv } from "@gym/config";
-import type { Database } from "@gym/db";
-import { users } from "@gym/db/schema";
+import { withTenant, type Database } from "@gym/db";
+import { staffMembers, users } from "@gym/db/schema";
 import { createHmac, generateKeyPairSync, randomBytes } from "node:crypto";
 import { inject } from "vitest";
 import { SessionService } from "../src/auth/session.service";
@@ -109,6 +109,19 @@ export async function gymWithMember(
           ...body,
         })
       ).json(),
+    /** Another signed-in staff member of this gym with `role` (limited to `branchIds` when given). */
+    staff: async (
+      role: "owner" | "manager" | "front_desk" | "trainer",
+      branchIds: string[] = [],
+    ) => {
+      const person = await signedInStaff(app, db);
+      await withTenant(db, created.organisation.id, (tx) =>
+        tx
+          .insert(staffMembers)
+          .values({ tenantId: created.organisation.id, userId: person.user.id, role, branchIds }),
+      );
+      return person;
+    },
     enrol: (planId: string, startDate?: string) =>
       call("POST", `${base}/members/${member.id}/memberships`, {
         planId,

@@ -9,7 +9,8 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import type { Redis } from "ioredis";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { hashToken } from "../common/crypto";
 import type { ApiEnv } from "../env";
 import { recordAudit } from "../platform/audit";
 import { DB, ENV, REDIS } from "../tokens";
@@ -18,7 +19,6 @@ import { TokenService } from "./token.service";
 
 const DAY = 86_400_000;
 const revokedKey = (sessionId: string) => `auth:revoked:${sessionId}`;
-const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
 export interface SessionStart {
   amr: string[];

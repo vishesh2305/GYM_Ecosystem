@@ -1,4 +1,4 @@
-import { getMyPass, listMyGyms } from "./access";
+import { createKiosk, getKiosk, getMyPass, listKiosks, listMyGyms, revokeKiosk } from "./access";
 import {
   confirmTotp,
   disableTotp,
@@ -84,6 +84,10 @@ export const routes = {
   disableTotp,
   listMyGyms,
   getMyPass,
+  createKiosk,
+  listKiosks,
+  revokeKiosk,
+  getKiosk,
   getMe,
   updateMe,
   listConsents,

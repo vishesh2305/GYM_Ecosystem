@@ -288,6 +288,20 @@
       "when": 1795598610863,
       "tag": "0040_member_passes_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795598704906,
+      "tag": "0041_kiosks",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1795598705202,
+      "tag": "0042_kiosks_rls",
+      "breakpoints": true
     }
   ]
 }

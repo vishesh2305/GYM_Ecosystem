@@ -1,4 +1,7 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
+
+/** Bearer secrets (refresh tokens, invites, kiosks) are stored only as their SHA-256. */
+export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
 // AES-256-GCM. Output: base64(iv[12] | tag[16] | ciphertext). Tampering or a wrong key throws on decrypt.
 const IV_BYTES = 12;
