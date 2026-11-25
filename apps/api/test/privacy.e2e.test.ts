@@ -19,6 +19,7 @@ import { issueMembershipInvoice } from "../src/billing/invoicing";
 import { notify } from "../src/notifications/delivery";
 import { NOT_EXPORTED } from "../src/privacy/export";
 import { runPrivacyRequests } from "../src/privacy/requests";
+import { runRetention } from "../src/privacy/retention";
 import { gymWithMember, signedInUser, testEnv } from "./helpers";
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
@@ -390,5 +391,94 @@ describe("account erasure (right to erasure)", () => {
       payload: { confirm: "yes" },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("retention", () => {
+  it("clears personal data that has served its purpose, and nothing that is still needed", async () => {
+    const g = await gymWithMember(api, dbh.db);
+    const orgId = orgOf(g);
+    const now = new Date();
+    const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000);
+    const person = await signedInUser(api, dbh.db);
+    const fresh = await signedInUser(api, dbh.db);
+    await dbh.pool.query("update sessions set revoked_at = $1 where user_id = $2", [
+      daysAgo(40),
+      person.user.id,
+    ]);
+    const otp = (createdAt: Date, destination: string) =>
+      dbh.db.insert(otpChallenges).values({
+        channel: "sms",
+        destination,
+        codeHash: "x",
+        expiresAt: createdAt,
+        createdAt,
+      });
+    await otp(daysAgo(2), "+919800000001");
+    await otp(now, "+919800000002");
+    await withTenant(dbh.db, orgId, async (tx) => {
+      await notify(tx, {
+        tenantId: orgId,
+        memberId: g.member.id,
+        key: "inactive",
+        vars: { name: "A", gym: "B" },
+        dedupeKey: "old",
+      });
+      await notify(tx, {
+        tenantId: orgId,
+        memberId: g.member.id,
+        key: "inactive",
+        vars: { name: "A", gym: "B" },
+        dedupeKey: "new",
+      });
+    });
+    await dbh.pool.query("update notifications set created_at = $1 where dedupe_key = 'old'", [
+      daysAgo(400),
+    ]);
+    const lead = (phone: string) =>
+      g.call("POST", `${g.base}/leads`, {
+        name: "Old",
+        phone,
+        branchId: g.branch.id,
+        source: "walk_in",
+      });
+    const stale = (await lead("9811100001")).json().id as string;
+    const recent = (await lead("9811100002")).json().id as string;
+    for (const id of [stale, recent])
+      await g.call("PATCH", `${g.base}/leads/${id}`, { stage: "lost", lostReason: "Moved away" });
+    await dbh.pool.query("update leads set updated_at = $1 where id = $2", [daysAgo(400), stale]);
+
+    const removed = await runRetention(dbh.db, now);
+    expect(removed).toMatchObject({ otpChallenges: 1, notifications: 1, closedLeads: 1 });
+    expect(removed.sessions).toBeGreaterThanOrEqual(1);
+
+    const left = async (sql: string, params: unknown[]) =>
+      Number((await dbh.pool.query(sql, params)).rows[0]?.n);
+    expect(
+      await left("select count(*) as n from sessions where user_id = $1", [person.user.id]),
+    ).toBe(0);
+    expect(
+      await left("select count(*) as n from sessions where user_id = $1", [fresh.user.id]),
+    ).toBe(1);
+    expect(
+      await left("select count(*) as n from otp_challenges where destination = $1", [
+        "+919800000002",
+      ]),
+    ).toBe(1);
+    expect(
+      await left(
+        "select count(*) as n from notifications where dedupe_key = 'new' and tenant_id = $1",
+        [orgId],
+      ),
+    ).toBe(1);
+    const leads = await dbh.pool.query<{ id: string; phone: string | null; name: string }>(
+      "select id, phone, name from leads where id = any($1)",
+      [[stale, recent]],
+    );
+    expect(leads.rows.find((l) => l.id === stale)).toMatchObject({
+      phone: null,
+      name: "Closed enquiry",
+    });
+    expect(leads.rows.find((l) => l.id === recent)?.phone).toBe("+919811100002");
   });
 });
