@@ -214,3 +214,14 @@ export const cancelMyBooking = defineRoute({
   params: bookingParams,
   response: booking,
 });
+
+export const markAttendance = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/bookings/{bookingId}/attendance",
+  summary:
+    "Mark whether a booked member came (once the session has started; otherwise it is settled from check-ins after it ends)",
+  tag: "classes",
+  params: bookingParams,
+  body: z.object({ attended: z.boolean() }),
+  response: booking,
+});

@@ -1,6 +1,6 @@
 import type { routes } from "@gym/contracts";
 import { withTenant, type DbHandle, type Tx } from "@gym/db";
-import { and, asc, count, desc, eq, inArray, isNull } from "@gym/db/orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull } from "@gym/db/orm";
 import { bookings, classSessions, members } from "@gym/db/schema";
 import { isLateCancel, todayIn, type EntryDenial } from "@gym/domain";
 import {
@@ -31,7 +31,8 @@ import {
   TenantScoped,
   type TenantContext,
 } from "../tenancy/tenant.guard";
-import { DB } from "../tokens";
+import type { ApiEnv } from "../env";
+import { DB, ENV } from "../tokens";
 import { sessionRange, toSession, type Session, type SessionOut } from "./timetable";
 
 type Booking = typeof bookings.$inferSelect;
@@ -39,6 +40,7 @@ type BookingOut = z.output<typeof routes.bookSession.response>;
 
 const LIVE: readonly Booking["status"][] = ["confirmed", "waitlisted"];
 const HISTORY = 50;
+const NO_SHOW_DAYS = 30;
 
 /** Shown when the membership rules refuse a booking. */
 const REFUSALS: Record<EntryDenial, string> = {
@@ -172,13 +174,29 @@ export async function refillSession(tx: Tx, sessionId: string): Promise<void> {
   await fillPlaces(tx, await lockSession(tx, sessionId));
 }
 
+/** No-shows for sessions that started in the last NO_SHOW_DAYS days. */
+export async function recentNoShows(tx: Tx, memberId: string, now: Date = new Date()) {
+  const [row] = await tx
+    .select({ n: count() })
+    .from(bookings)
+    .innerJoin(classSessions, eq(classSessions.id, bookings.sessionId))
+    .where(
+      and(
+        eq(bookings.memberId, memberId),
+        eq(bookings.status, "no_show"),
+        gte(classSessions.startsAt, new Date(now.getTime() - NO_SHOW_DAYS * 86_400_000)),
+      ),
+    );
+  return row?.n ?? 0;
+}
+
 /**
  * Book a member into a session: a place while there is one, otherwise the waitlist. The session row is locked,
  * so simultaneous bookings never exceed the capacity. Booking again returns the existing booking.
  */
 export async function book(
   tx: Tx,
-  input: { sessionId: string; memberId: string; staffId?: string },
+  input: { sessionId: string; memberId: string; staffId?: string; noShowLimit?: number },
   now: Date = new Date(),
 ): Promise<BookingOut> {
   const session = await lockSession(tx, input.sessionId);
@@ -205,6 +223,10 @@ export async function book(
   const onDate = todayIn(await orgTimezone(tx), session.startsAt);
   const refusal = await entryDenialFor(tx, member.id, session.branchId, onDate);
   if (refusal) throw new BadRequestException(REFUSALS[refusal]);
+  if (input.noShowLimit && (await recentNoShows(tx, member.id, now)) >= input.noShowLimit)
+    throw new BadRequestException(
+      `Booking in the app is paused after ${input.noShowLimit} missed classes in ${NO_SHOW_DAYS} days; please ask at the desk`,
+    );
 
   const [taken] = await tx
     .select({ n: count() })
@@ -320,7 +342,10 @@ export class BookingsController {
 
 @Controller("me/gyms/:orgId")
 export class MyBookingsController {
-  constructor(@Inject(DB) private readonly db: DbHandle) {}
+  constructor(
+    @Inject(DB) private readonly db: DbHandle,
+    @Inject(ENV) private readonly env: ApiEnv,
+  ) {}
 
   @Get("sessions")
   async sessions(
@@ -378,7 +403,11 @@ export class MyBookingsController {
   ): Promise<BookingOut> {
     const gym = await myMembership(this.db.db, auth.userId, params.orgId);
     return withTenant(this.db.db, gym.orgId, (tx) =>
-      book(tx, { sessionId: params.sessionId, memberId: gym.memberId }),
+      book(tx, {
+        sessionId: params.sessionId,
+        memberId: gym.memberId,
+        noShowLimit: this.env.NO_SHOW_LIMIT,
+      }),
     );
   }
 

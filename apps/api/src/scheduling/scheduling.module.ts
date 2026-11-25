@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AttendanceController } from "./attendance";
 import { BookingsController, MyBookingsController } from "./bookings";
 import { ClassesController, ClassSessionsController } from "./classes.controller";
 
@@ -9,6 +10,7 @@ import { ClassesController, ClassSessionsController } from "./classes.controller
     ClassSessionsController,
     BookingsController,
     MyBookingsController,
+    AttendanceController,
   ],
 })
 export class SchedulingModule {}

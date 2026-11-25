@@ -8,6 +8,7 @@ import { runAutoCheckOut } from "../access/occupancy";
 import { runAutopayRenewals } from "../billing/autopay-renewals";
 import { createGateway } from "../billing/gateway";
 import { runPaymentReminders } from "../billing/reminders";
+import { runAttendance } from "../scheduling/attendance";
 import { runSessionGeneration } from "../scheduling/timetable";
 import { runMembershipLifecycle } from "../membership/lifecycle";
 import { runMaintenance } from "../platform/maintenance";
@@ -27,7 +28,7 @@ export interface WorkerOptions {
 
 export type WorkerHandle = Awaited<ReturnType<typeof createWorker>>;
 
-/** Background process: outbox relay, event handlers, hourly maintenance, membership upkeep, AutoPay renewals, auto check-out and class sessions. */
+/** Background process: outbox relay, event handlers, hourly maintenance, membership upkeep, AutoPay renewals, auto check-out, class sessions and attendance. */
 export async function createWorker(
   env: ApiEnv,
   { extraHandlers = [], autostart = true }: WorkerOptions = {},
@@ -69,6 +70,11 @@ export async function createWorker(
     { name: "payment-reminders" },
   );
   await maintenanceQueue.upsertJobScheduler(
+    "class-attendance-hourly",
+    { every: HOUR },
+    { name: "class-attendance" },
+  );
+  await maintenanceQueue.upsertJobScheduler(
     "class-sessions-hourly",
     { every: HOUR },
     { name: "class-sessions" },
@@ -94,15 +100,17 @@ export async function createWorker(
       const result =
         job.name === "membership-lifecycle"
           ? await runMembershipLifecycle(db.db)
-          : job.name === "class-sessions"
-            ? await runSessionGeneration(db.db)
-            : job.name === "auto-check-out"
-              ? await runAutoCheckOut(db.db, env.CHECKIN_AUTO_OUT_HOURS)
-              : job.name === "autopay-renewals"
-                ? await runAutopayRenewals(db.db, gateway)
-                : job.name === "payment-reminders"
-                  ? await runPaymentReminders(db.db, env.DUNNING_GRACE_DAYS)
-                  : await runMaintenance(db.db);
+          : job.name === "class-attendance"
+            ? await runAttendance(db.db)
+            : job.name === "class-sessions"
+              ? await runSessionGeneration(db.db)
+              : job.name === "auto-check-out"
+                ? await runAutoCheckOut(db.db, env.CHECKIN_AUTO_OUT_HOURS)
+                : job.name === "autopay-renewals"
+                  ? await runAutopayRenewals(db.db, gateway)
+                  : job.name === "payment-reminders"
+                    ? await runPaymentReminders(db.db, env.DUNNING_GRACE_DAYS)
+                    : await runMaintenance(db.db);
       logger.info({ job: job.name, ...result }, "scheduled job done");
     },
     { connection, prefix: env.QUEUE_PREFIX, autorun: false },

@@ -1,8 +1,9 @@
 import { createDb, withTenant, type DbHandle } from "@gym/db";
-import { asc, eq } from "@gym/db/orm";
-import { bookings, classes, classSessions, outboxEvents } from "@gym/db/schema";
+import { asc, eq, inArray } from "@gym/db/orm";
+import { bookings, checkIns, classes, classSessions, outboxEvents } from "@gym/db/schema";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
+import { runAttendance } from "../src/scheduling/attendance";
 import { generateSessions, runSessionGeneration } from "../src/scheduling/timetable";
 import { gymWithMember, signedInUser, testEnv } from "./helpers";
 
@@ -239,6 +240,33 @@ const eventsOf = async (orgId: string, type: string) =>
     .filter((e) => e.type === type)
     .map((e) => e.payload as Record<string, unknown>);
 
+/** A member of gym `t` with a free running membership, signed in to the app with their phone. */
+async function appMember(t: { g: Awaited<ReturnType<typeof gymWithMember>> }) {
+  const phone = `+9197${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
+  const member = (
+    await t.g.call("POST", `${t.g.base}/members`, {
+      name: "Asha",
+      phone,
+      homeBranchId: t.g.branch.id,
+    })
+  ).json();
+  const plan = await t.g.plan({ pricePaise: 0, joiningFeePaise: 0 });
+  await t.g.call("POST", `${t.g.base}/members/${member.id}/memberships`, { planId: plan.id });
+  return { member, me: await signedInUser(api, dbh.db, { phone }) };
+}
+
+/** Move a session into the past: started two hours ago, ended an hour ago. */
+const endSession = (orgId: string, sessionId: string) =>
+  withTenant(dbh.db, orgId, (tx) =>
+    tx
+      .update(classSessions)
+      .set({
+        startsAt: new Date(Date.now() - 2 * 3_600_000),
+        endsAt: new Date(Date.now() - 3_600_000),
+      })
+      .where(eq(classSessions.id, sessionId)),
+  );
+
 describe("booking classes", () => {
   it("200 members booking 20 places at once: exactly 20 get a place, the rest wait in order", async () => {
     const t = await sessionWithMembers(200, 20);
@@ -353,17 +381,7 @@ describe("booking classes", () => {
 
   it("members see sessions with places left, book themselves, and cancel in the app", async () => {
     const t = await gymWithClass({ capacity: 1 });
-    const phone = `+9197${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
-    const member = (
-      await t.g.call("POST", `${t.g.base}/members`, {
-        name: "Asha",
-        phone,
-        homeBranchId: t.g.branch.id,
-      })
-    ).json();
-    const plan = await t.g.plan({ pricePaise: 0, joiningFeePaise: 0 });
-    await t.g.call("POST", `${t.g.base}/members/${member.id}/memberships`, { planId: plan.id });
-    const me = await signedInUser(api, dbh.db, { phone });
+    const { me } = await appMember(t);
     const mine = `/v1/me/gyms/${t.orgId}`;
     const asMe = (method: string, url: string) =>
       api.inject({ method, url: `${mine}${url}`, headers: me.headers });
@@ -402,5 +420,92 @@ describe("booking classes", () => {
       tx.select().from(bookings).where(eq(bookings.sessionId, first.id)),
     );
     expect(rows).toHaveLength(2);
+  });
+});
+
+describe("attendance and no-shows", () => {
+  it("after a session, members who checked in count as attended and the others as no-shows", async () => {
+    const t = await sessionWithMembers(3, 2);
+    const [came, missed, waiting] = t.memberIds;
+    for (const id of t.memberIds) await t.book(id);
+    await endSession(t.orgId, t.session.id);
+    await withTenant(dbh.db, t.orgId, (tx) =>
+      tx.insert(checkIns).values({
+        tenantId: t.orgId,
+        branchId: t.g.branch.id,
+        memberId: came ?? "",
+        method: "desk",
+        checkedInAt: new Date(Date.now() - 2.5 * 3_600_000),
+      }),
+    );
+    await runAttendance(dbh.db);
+    await runAttendance(dbh.db);
+    const byMember = new Map(
+      (await t.roster()).map((r: { memberId: string; status: string }) => [r.memberId, r.status]),
+    );
+    expect(byMember.get(came ?? "")).toBe("attended");
+    expect(byMember.get(missed ?? "")).toBe("no_show");
+    expect(byMember.get(waiting ?? "")).toBe("cancelled");
+    const [settled] = await withTenant(dbh.db, t.orgId, (tx) =>
+      tx.select().from(classSessions).where(eq(classSessions.id, t.session.id)),
+    );
+    expect(settled?.settledAt).toBeInstanceOf(Date);
+  });
+
+  it("staff and trainers can mark attendance once the session has started, and it sticks", async () => {
+    const t = await sessionWithMembers(2, 1);
+    const booked = (await t.book(t.memberIds[0] ?? "")).json();
+    const waiting = (await t.book(t.memberIds[1] ?? "")).json();
+    const mark = (id: string, attended: boolean, headers = t.g.owner.headers) =>
+      api.inject({
+        method: "POST",
+        url: `${t.g.base}/bookings/${id}/attendance`,
+        headers,
+        payload: { attended },
+      });
+    expect((await mark(booked.id, true)).statusCode).toBe(400); // not started yet
+    await endSession(t.orgId, t.session.id);
+    const trainer = await t.g.staff("trainer");
+    expect((await mark(booked.id, false, trainer.headers)).json().status).toBe("no_show");
+    expect((await mark(booked.id, true)).json().status).toBe("attended");
+    expect((await mark(waiting.id, true)).statusCode).toBe(400);
+    await runAttendance(dbh.db);
+    const [row] = await withTenant(dbh.db, t.orgId, (tx) =>
+      tx
+        .select()
+        .from(bookings)
+        .where(inArray(bookings.id, [booked.id])),
+    );
+    expect(row?.status).toBe("attended");
+  });
+
+  it("can pause app booking after too many no-shows, while staff can still book", async () => {
+    const strict = (await createApp(testEnv({ NO_SHOW_LIMIT: "1" }))).app;
+    try {
+      const t = await gymWithClass({ capacity: 5 });
+      const { member, me } = await appMember(t);
+      const [missed, next] = await t.sessions();
+      await t.g.call("POST", `${t.g.base}/sessions/${missed?.id}/bookings`, {
+        memberId: member.id,
+      });
+      await endSession(t.orgId, missed?.id ?? "");
+      await runAttendance(dbh.db);
+      const res = await strict.inject({
+        method: "POST",
+        url: `/v1/me/gyms/${t.orgId}/sessions/${next?.id}/bookings`,
+        headers: me.headers,
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().detail).toMatch(/missed classes/);
+      expect(
+        (
+          await t.g.call("POST", `${t.g.base}/sessions/${next?.id}/bookings`, {
+            memberId: member.id,
+          })
+        ).statusCode,
+      ).toBe(201);
+    } finally {
+      await strict.close();
+    }
   });
 });

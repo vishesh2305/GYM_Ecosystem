@@ -43,6 +43,7 @@ const SAMPLE_BODIES: Record<string, object> = {
   updateClass: { name: "Renamed by intruder" },
   cancelClassSession: { reason: "Intruder" },
   bookSession: { memberId: "00000000-0000-7000-8000-000000000000" },
+  markAttendance: { attended: true },
   updateBranch: { name: "Renamed by intruder" },
   inviteStaff: { channel: "sms", phone: "+919000000001", role: "trainer" },
   updateStaff: { role: "trainer" },

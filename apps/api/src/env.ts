@@ -84,6 +84,8 @@ export const apiEnvSchema = baseEnvSchema
     RAZORPAY_WEBHOOK_SECRET: z.string().min(8).default("dev-webhook-secret"),
     /** Days after an invoice's due date before the unpaid membership expires. */
     DUNNING_GRACE_DAYS: z.coerce.number().int().min(0).max(60).default(7),
+    /** Members with this many no-shows in 30 days cannot book in the app (staff still can). 0 = never. */
+    NO_SHOW_LIMIT: z.coerce.number().int().min(0).max(20).default(0),
     /** Hours after check-in when a member who never checked out no longer counts as inside. */
     CHECKIN_AUTO_OUT_HOURS: z.coerce.number().int().min(1).max(24).default(3),
     /** Owners, managers and front desk must pass two-step verification before using a gym's data. */
