@@ -69,6 +69,6 @@ Launch assumption: India (INR, GST, UPI, WhatsApp, DPDP Act). Status of each sto
 
 ## Admin and privacy (A16)
 
-- **AD-1 Tenant admin.** Platform staff view tenants, KYC status, feature flags; impersonation requires consent and is audited.
-- **PR-1 Data export.** User downloads all their personal data as JSON within 24 h.
-- **PR-2 Account deletion.** Personal data deleted or anonymised across all modules within 30 days; financial records kept as legally required, de-identified.
+- **AD-1 Tenant admin.** Platform staff view tenants, KYC status, feature flags; impersonation requires consent and is audited. Done in A16 (ADR 018); support access is read only.
+- **PR-1 Data export.** User downloads all their personal data as JSON within 24 h. Done in A16 (ADR 018): ready within minutes.
+- **PR-2 Account deletion.** Personal data deleted or anonymised across all modules within 30 days; financial records kept as legally required, de-identified. Done in A16 (ADR 018): within minutes; see docs/compliance/dpdp-checklist.md.
