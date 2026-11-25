@@ -105,6 +105,7 @@ import {
   revenueReport,
   summaryReport,
 } from "./reports";
+import { downloadDataExport, listPrivacyRequests, requestDataExport } from "./privacy";
 import { createEnquiry, getPublicGym, getPublicSchedule } from "./public";
 import { health, ready } from "./system";
 import {
@@ -250,4 +251,7 @@ export const routes = {
   getPublicGym,
   getPublicSchedule,
   createEnquiry,
+  requestDataExport,
+  listPrivacyRequests,
+  downloadDataExport,
 };

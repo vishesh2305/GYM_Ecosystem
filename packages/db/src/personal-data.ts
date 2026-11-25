@@ -43,6 +43,12 @@ export const PERSONAL_DATA = {
   workout_templates: { holds: "workout plans", subject: "user", erasure: "delete" },
   personal_records: { holds: "personal bests (health data)", subject: "user", erasure: "delete" },
   body_metrics: { holds: "body measurements (health data)", subject: "user", erasure: "delete" },
+  privacy_requests: {
+    holds: "export and erasure requests, export files",
+    subject: "user",
+    erasure: "retain",
+    reason: "proof that a request was honoured; exports themselves are deleted after 7 days",
+  },
   members: {
     holds: "name, phone, email, date of birth, emergency contact, notes",
     subject: "member",

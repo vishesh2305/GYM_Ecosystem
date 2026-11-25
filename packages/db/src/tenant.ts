@@ -55,3 +55,15 @@ export async function withSystem<T>(db: Database, fn: (tx: Tx) => Promise<T>): P
     return fn(tx);
   });
 }
+
+/**
+ * Cross-tenant access to one person's data for the privacy job only (data export and erasure, DPDP Act 2023).
+ * Runs as `app_privacy`, which bypasses RLS but is granted reading and exactly the changes erasure makes. Never
+ * use it to handle a request.
+ */
+export async function withPrivacy<T>(db: Database, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`set local role app_privacy`);
+    return fn(tx);
+  });
+}

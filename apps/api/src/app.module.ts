@@ -11,6 +11,7 @@ import { InfraModule } from "./infra.module";
 import { MembershipModule } from "./membership/membership.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { PlatformModule } from "./platform/platform.module";
+import { PrivacyModule } from "./privacy/privacy.module";
 import { ReportsModule } from "./reports/reports.module";
 import { SchedulingModule } from "./scheduling/scheduling.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
@@ -34,6 +35,7 @@ export class AppModule {
         NotificationsModule,
         CrmModule,
         ReportsModule,
+        PrivacyModule,
         ...modules,
       ],
       controllers: [HealthController, DocsController],
