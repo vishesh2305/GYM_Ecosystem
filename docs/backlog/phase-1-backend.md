@@ -45,9 +45,9 @@ Launch assumption: India (INR, GST, UPI, WhatsApp, DPDP Act). Status of each sto
 
 ## Scheduling (A12)
 
-- **SC-1 Class schedule.** Recurring classes with capacity, room, instructor.
-- **SC-2 Booking and waitlist.** Never overbooked under concurrency; waitlist promoted in order on cancellation.
-- **SC-3 Cancellation and no-show rules.** Late cancel / no-show counted; optional booking block after N no-shows.
+- **SC-1 Class schedule.** Recurring classes with capacity, room, instructor. Done in A12 (ADR 014).
+- **SC-2 Booking and waitlist.** Never overbooked under concurrency; waitlist promoted in order on cancellation. Done in A12 (ADR 014).
+- **SC-3 Cancellation and no-show rules.** Late cancel / no-show counted; optional booking block after N no-shows. Done in A12 (ADR 014).
 
 ## Training (A13)
 
