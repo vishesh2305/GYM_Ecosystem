@@ -82,3 +82,29 @@ export const listMyWorkouts = defineRoute({
   }),
   response: z.array(workout),
 });
+
+export const listMyRecords = defineRoute({
+  method: "GET",
+  path: "/v1/me/personal-records",
+  summary:
+    "My personal records per exercise (max_weight, est_1rm, best_set_volume, max_reps, max_duration, max_distance), " +
+    "recalculated whenever sets are uploaded",
+  tag: "training",
+  response: z.array(
+    z.object({
+      exerciseId: z.uuid(),
+      exerciseName: z.string(),
+      kind: z.enum([
+        "max_weight",
+        "est_1rm",
+        "best_set_volume",
+        "max_reps",
+        "max_duration",
+        "max_distance",
+      ]),
+      value: z.number(),
+      setId: z.uuid(),
+      achievedAt: z.iso.datetime(),
+    }),
+  ),
+});

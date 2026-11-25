@@ -18,3 +18,4 @@ bucket_definitions:
       - SELECT * FROM workouts WHERE user_id = bucket.user_id
       - SELECT * FROM workout_sets WHERE user_id = bucket.user_id
       - SELECT * FROM workout_templates WHERE user_id = bucket.user_id
+      - SELECT * FROM personal_records WHERE user_id = bucket.user_id

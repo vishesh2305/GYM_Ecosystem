@@ -1,6 +1,6 @@
 import { createDb, type DbHandle } from "@gym/db";
-import { eq } from "@gym/db/orm";
-import { exercises, workoutSets, workouts } from "@gym/db/schema";
+import { and, eq, sql } from "@gym/db/orm";
+import { exercises, outboxEvents, workoutSets, workouts } from "@gym/db/schema";
 import { createLocalJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 import { v7 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -400,5 +400,93 @@ describe("sync service sign-in", () => {
       audience: testEnv().JWT_AUDIENCE,
     });
     expect(payload.sub).toBe(me.user.id);
+  });
+});
+
+describe("personal records", () => {
+  type Record = { exerciseName: string; kind: string; value: number; setId: string };
+
+  async function records(headers: Headers) {
+    const res = await api.inject({ method: "GET", url: "/v1/me/personal-records", headers });
+    expect(res.statusCode).toBe(200);
+    return Object.fromEntries((res.json() as Record[]).map((r) => [r.kind, r.value]));
+  }
+
+  async function celebrations(userId: string) {
+    const rows = await dbh.db
+      .select({ payload: outboxEvents.payload })
+      .from(outboxEvents)
+      .where(
+        and(
+          eq(outboxEvents.type, "training.personal_record_set"),
+          sql`${outboxEvents.payload}->>'userId' = ${userId}`,
+        ),
+      );
+    return rows.map((r) => r.payload as { kind: string; value: number; previous: number | null });
+  }
+
+  it("are found when sets sync, beaten by better sets and announced once per new best", async () => {
+    const me = await signedInUser(api, dbh.db);
+    const other = await signedInUser(api, dbh.db);
+    const bench = await libraryId("barbell-bench-press");
+    const phone = new OfflinePhone(me.headers);
+
+    const monday = phone.startWorkout("Monday");
+    phone.record({
+      op: "PUT",
+      type: "workout_sets",
+      id: v7(),
+      data: {
+        workout_id: monday,
+        exercise_id: bench,
+        position: 0,
+        kind: "warmup",
+        reps: 1,
+        weight_kg: 100,
+        completed_at: new Date().toISOString(),
+      },
+    });
+    phone.logSet(monday, bench, 1, 8, 60);
+    phone.logSet(monday, bench, 2, 8, 62.5);
+    const first = await phone.sync();
+    expect(await records(me.headers)).toEqual({
+      max_weight: 62.5,
+      est_1rm: 79.17,
+      best_set_volume: 500,
+    });
+    expect(await celebrations(me.user.id)).toHaveLength(3);
+
+    const thursday = phone.startWorkout("Thursday");
+    phone.logSet(thursday, bench, 1, 5, 70);
+    await phone.sync();
+    expect(await records(me.headers)).toEqual({
+      max_weight: 70,
+      est_1rm: 81.67,
+      best_set_volume: 500,
+    });
+    const beaten = (await celebrations(me.user.id)).slice(3);
+    expect(beaten).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "max_weight", value: 70, previous: 62.5 }),
+        expect.objectContaining({ kind: "est_1rm", value: 81.67, previous: 79.17 }),
+      ]),
+    );
+    expect(beaten).toHaveLength(2);
+
+    // A retried upload changes nothing and announces nothing.
+    await upload(me.headers, first.sent);
+    expect(await celebrations(me.user.id)).toHaveLength(5);
+
+    // Deleting Thursday's workout puts Monday's records back, without announcing them again.
+    phone.record({ op: "DELETE", type: "workouts", id: thursday });
+    await phone.sync();
+    expect(await records(me.headers)).toEqual({
+      max_weight: 62.5,
+      est_1rm: 79.17,
+      best_set_volume: 500,
+    });
+    expect(await celebrations(me.user.id)).toHaveLength(5);
+
+    expect(await records(other.headers)).toEqual({});
   });
 });

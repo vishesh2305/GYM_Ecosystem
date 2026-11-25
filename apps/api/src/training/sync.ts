@@ -1,8 +1,8 @@
 import type { routes } from "@gym/contracts";
 import { withUser, type DbHandle, type Tx } from "@gym/db";
 import { eq } from "@gym/db/orm";
-import { exercises, SET_KINDS, workouts, workoutSets, workoutTemplates } from "@gym/db/schema";
-import { EQUIPMENT, EXERCISE_TRACKING, MUSCLES } from "@gym/domain";
+import { exercises, workouts, workoutSets, workoutTemplates } from "@gym/db/schema";
+import { EQUIPMENT, EXERCISE_TRACKING, MUSCLES, SET_KINDS } from "@gym/domain";
 import {
   BadRequestException,
   Body,
@@ -18,6 +18,7 @@ import type { AuthContext } from "../auth/auth.types";
 import { contracts } from "../common/contracts";
 import { ZodPipe } from "../common/zod.pipe";
 import { DB } from "../tokens";
+import { refreshRecords } from "./records";
 
 type Operation = z.output<typeof routes.uploadSync.body>["batch"][number];
 
@@ -144,11 +145,35 @@ async function referencesVisible(tx: Tx, fields: Record<string, unknown>): Promi
   return true;
 }
 
-/** Applies one operation; false when it was skipped because its row (or parent) is gone. */
-async function applyOperation(tx: Tx, userId: string, op: Operation, index: number) {
+/** Exercises whose records the operation may change, looked up before it is applied. */
+async function exercisesBefore(tx: Tx, op: Operation): Promise<string[]> {
+  if (op.type === "exercises") return [op.id];
+  const sets =
+    op.type === "workout_sets"
+      ? eq(workoutSets.id, op.id)
+      : op.type === "workouts" && op.op === "DELETE"
+        ? eq(workoutSets.workoutId, op.id)
+        : undefined;
+  if (!sets) return [];
+  const rows = await tx.select({ id: workoutSets.exerciseId }).from(workoutSets).where(sets);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Applies one operation; false when it was skipped because its row (or parent) is gone. Adds the exercises
+ * whose personal records may have changed to `touched`.
+ */
+async function applyOperation(
+  tx: Tx,
+  userId: string,
+  op: Operation,
+  index: number,
+  touched: Set<string>,
+) {
   const spec = (WRITABLE as Record<string, Spec | undefined>)[op.type];
   if (!spec)
     throw new BadRequestException(`Operation ${index}: ${op.type} cannot be changed from the app`);
+  for (const id of await exercisesBefore(tx, op)) touched.add(id);
   // One generic code path for all four tables; each has id, user_id and updated_at.
   const table = spec.table as typeof workouts;
   const now = new Date();
@@ -168,6 +193,7 @@ async function applyOperation(tx: Tx, userId: string, op: Operation, index: numb
 
   const fields = fieldsOf(spec, op, index);
   if (!(await referencesVisible(tx, fields))) return false;
+  if (typeof fields.exerciseId === "string") touched.add(fields.exerciseId);
   if (op.op === "PATCH") {
     const changed = await tx
       .update(table)
@@ -195,10 +221,12 @@ export async function applySyncBatch(
   try {
     return await withUser(db, userId, async (tx) => {
       const result = { applied: 0, skipped: 0 };
+      const touched = new Set<string>();
       for (const [index, op] of batch.entries()) {
-        if (await applyOperation(tx, userId, op, index)) result.applied++;
+        if (await applyOperation(tx, userId, op, index, touched)) result.applied++;
         else result.skipped++;
       }
+      await refreshRecords(tx, userId, touched);
       return result;
     });
   } catch (error) {

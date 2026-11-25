@@ -372,6 +372,20 @@
       "when": 1795610737363,
       "tag": "0052_workouts_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1795611142131,
+      "tag": "0053_personal_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1795611142465,
+      "tag": "0054_personal_records_rls",
+      "breakpoints": true
     }
   ]
 }

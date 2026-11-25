@@ -1,4 +1,4 @@
-import { EXERCISE_TRACKING } from "@gym/domain";
+import { EXERCISE_TRACKING, SET_KINDS, type RecordKind } from "@gym/domain";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -72,8 +72,6 @@ export const workouts = pgTable(
   (t) => [index("workouts_user_started_idx").on(t.userId, t.startedAt)],
 );
 
-export const SET_KINDS = ["normal", "warmup", "drop", "failure"] as const;
-
 /** One set. `user_id` repeats the workout's owner so access rules and sync need no join. */
 export const workoutSets = pgTable(
   "workout_sets",
@@ -122,3 +120,29 @@ export const workoutTemplates = pgTable("workout_templates", {
     .default(sql`'[]'`),
   ...timestamps,
 });
+
+/**
+ * A person's current best per exercise and record kind, kept up to date by the server whenever sets are
+ * uploaded. Read-only for the app, which receives it through sync.
+ */
+export const personalRecords = pgTable(
+  "personal_records",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    exerciseId: uuid("exercise_id")
+      .notNull()
+      .references(() => exercises.id),
+    kind: text("kind").$type<RecordKind>().notNull(),
+    value: doublePrecision("value").notNull(),
+    /** No foreign key: when the set goes, the record is recalculated in the same transaction. */
+    setId: uuid("set_id").notNull(),
+    achievedAt: timestamp("achieved_at", tz).notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("personal_records_user_exercise_kind_key").on(t.userId, t.exerciseId, t.kind),
+  ],
+);

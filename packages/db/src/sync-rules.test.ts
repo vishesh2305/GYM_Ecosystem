@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it, inject } from "vitest";
 import { parse } from "yaml";
 import { createDb, type DbHandle } from "./client";
-import { exercises, users, workouts, workoutSets, workoutTemplates } from "./schema";
+import {
+  exercises,
+  personalRecords,
+  users,
+  workouts,
+  workoutSets,
+  workoutTemplates,
+} from "./schema";
 
 /**
  * Runs the PowerSync sync rules as the service would (a role that bypasses RLS) and checks that a phone
@@ -62,13 +69,25 @@ async function personWithTraining(name: string) {
     .values({ userId: user.id, name: `${name}'s arms`, startedAt: new Date() })
     .returning();
   if (!exercise || !workout) throw new Error("insert failed");
-  await handle.db.insert(workoutSets).values({
+  const [set] = await handle.db
+    .insert(workoutSets)
+    .values({
+      userId: user.id,
+      workoutId: workout.id,
+      exerciseId: exercise.id,
+      position: 1,
+      reps: 10,
+      weightKg: 12.5,
+    })
+    .returning();
+  if (!set) throw new Error("insert failed");
+  await handle.db.insert(personalRecords).values({
     userId: user.id,
-    workoutId: workout.id,
     exerciseId: exercise.id,
-    position: 1,
-    reps: 10,
-    weightKg: 12.5,
+    kind: "max_weight",
+    value: 12.5,
+    setId: set.id,
+    achievedAt: new Date(),
   });
   await handle.db.insert(workoutTemplates).values({ userId: user.id, name: `${name}'s plan` });
   return user.id;
@@ -87,7 +106,8 @@ describe("PowerSync sync rules", () => {
     const bob = await personWithTraining("Bob");
 
     const phone = await download(alice);
-    for (const table of ["exercises", "workouts", "workout_sets", "workout_templates"]) {
+    // Every synced table, so a table added to the rules later is checked too.
+    for (const table of syncedTables) {
       const rows = phone.get(table) ?? [];
       expect(
         rows.some((r) => r.user_id === alice),
