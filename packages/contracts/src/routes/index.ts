@@ -80,7 +80,13 @@ import {
   listClassSessions,
   updateClass,
 } from "./scheduling";
-import { listMemberNotifications, registerDevice, removeDevice } from "./notifications";
+import {
+  getMyNotificationPreferences,
+  listMemberNotifications,
+  registerDevice,
+  removeDevice,
+  updateMyNotificationPreferences,
+} from "./notifications";
 import { health, ready } from "./system";
 import {
   listExercises,
@@ -161,6 +167,8 @@ export const routes = {
   registerDevice,
   removeDevice,
   listMemberNotifications,
+  getMyNotificationPreferences,
+  updateMyNotificationPreferences,
   getMe,
   updateMe,
   listConsents,

@@ -1,7 +1,7 @@
 import { createDb, withTenant, type DbHandle } from "@gym/db";
 import { eq, sql } from "@gym/db/orm";
 import { members, notifications, pushDevices } from "@gym/db/schema";
-import type { Channel, MessageKey } from "@gym/domain";
+import type { Channel, MessageKey, MessageVars } from "@gym/domain";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import {
@@ -75,14 +75,26 @@ async function memberOf(g: Gym, contact: { phone?: string; email?: string }) {
   return (res.json() as { id: string }).id;
 }
 
+/** Tomorrow at noon in India: after any message queued now, and outside the default quiet hours. */
+const today = new Date();
+const NOON = new Date(
+  Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1, 6, 30),
+);
+const ist = (offsetFromNoonHours: number) =>
+  new Date(NOON.getTime() + offsetFromNoonHours * 3_600_000);
+
 let seq = 0;
-function queue(g: Gym, memberId: string, extra: { expiresAt?: Date; dedupeKey?: string } = {}) {
+function queue(
+  g: Gym,
+  memberId: string,
+  extra: { expiresAt?: Date; dedupeKey?: string; key?: MessageKey; vars?: MessageVars } = {},
+) {
   return withTenant(dbh.db, orgOf(g), (tx) =>
     notify(tx, {
       tenantId: orgOf(g),
       memberId,
-      key: "inactive",
-      vars: { name: "Asha", gym: "Iron Den" },
+      key: extra.key ?? "inactive",
+      vars: extra.vars ?? { name: "Asha", gym: "Iron Den" },
       dedupeKey: extra.dedupeKey ?? `test:${++seq}`,
       ...(extra.expiresAt && { expiresAt: extra.expiresAt }),
     }),
@@ -111,7 +123,7 @@ describe("message delivery", () => {
     await queue(g, memberId);
     const c = fakes();
     c.whatsapp.failing = true;
-    await runNotificationDelivery(dbh.db, c.all, options);
+    await runNotificationDelivery(dbh.db, c.all, options, NOON);
     const mine = c.sms.sent.filter((m) => m.to === phone);
     expect(mine).toEqual([expect.objectContaining({ key: "inactive" })]);
     expect(mine[0]?.body).toContain("Iron Den");
@@ -126,7 +138,7 @@ describe("message delivery", () => {
     await queue(g, memberId);
     const c = fakes();
     c.whatsapp.failing = c.sms.failing = true;
-    const start = new Date();
+    const start = NOON;
     await runNotificationDelivery(dbh.db, c.all, options, start);
     let [row] = await rowsOf(g, memberId);
     expect(row).toMatchObject({ status: "pending", attempts: 1 });
@@ -160,7 +172,7 @@ describe("message delivery", () => {
       tx.update(members).set({ deletedAt: new Date() }).where(eq(members.id, removed)),
     );
     const c = fakes();
-    await runNotificationDelivery(dbh.db, c.all, options);
+    await runNotificationDelivery(dbh.db, c.all, options, NOON);
     expect((await rowsOf(g, late))[0]).toMatchObject({
       status: "skipped",
       lastError: expect.stringContaining("expired"),
@@ -183,11 +195,11 @@ describe("message delivery", () => {
     for (let i = 0; i < 5; i++) await queue(busy, busyMember);
     await queue(quiet, quietMember);
     const c = fakes();
-    await runNotificationDelivery(dbh.db, c.all, { ...options, perGym: 2 });
+    await runNotificationDelivery(dbh.db, c.all, { ...options, perGym: 2 }, NOON);
     const sent = (rows: { status: string }[]) => rows.filter((r) => r.status === "sent").length;
     expect(sent(await rowsOf(busy, busyMember))).toBe(2);
     expect(sent(await rowsOf(quiet, quietMember))).toBe(1);
-    await runNotificationDelivery(dbh.db, c.all, { ...options, perGym: 2 });
+    await runNotificationDelivery(dbh.db, c.all, { ...options, perGym: 2 }, NOON);
     expect(sent(await rowsOf(busy, busyMember))).toBe(4);
   });
 
@@ -229,7 +241,7 @@ describe("app push notifications", () => {
     const { g, phone, memberId, token } = await memberWithApp();
     await queue(g, memberId);
     const c = fakes();
-    await runNotificationDelivery(dbh.db, c.all, options);
+    await runNotificationDelivery(dbh.db, c.all, options, NOON);
     expect(c.push.sent).toEqual([expect.objectContaining({ to: token })]);
     expect(c.whatsapp.sent.filter((m) => m.to === phone)).toEqual([]);
   });
@@ -240,7 +252,7 @@ describe("app push notifications", () => {
     const c = fakes();
     c.push.failing = true;
     c.push.deadTokens = [token];
-    await runNotificationDelivery(dbh.db, c.all, options);
+    await runNotificationDelivery(dbh.db, c.all, options, NOON);
     expect(c.whatsapp.sent.filter((m) => m.to === phone)).toHaveLength(1);
     const [device] = await dbh.db.select().from(pushDevices).where(eq(pushDevices.token, token));
     expect(device?.disabledAt).not.toBeNull();
@@ -275,5 +287,101 @@ describe("app push notifications", () => {
       tx.execute(sql`select app.member_push_tokens(${memberId}) as token`),
     );
     expect(tokens.rows).toEqual([]);
+  });
+});
+
+describe("member preferences", () => {
+  async function appMember() {
+    const g = await gymWithMember(api, dbh.db);
+    const phone = randomPhone();
+    const memberId = await memberOf(g, { phone, email: "asha@example.com" });
+    const person = await signedInUser(api, dbh.db, { phone });
+    await api.inject({ method: "GET", url: "/v1/me/gyms", headers: person.headers });
+    const url = `/v1/me/gyms/${orgOf(g)}/notification-preferences`;
+    const patch = (payload: object) =>
+      api.inject({ method: "PATCH", url, headers: person.headers, payload });
+    return { g, phone, memberId, person, url, patch };
+  }
+  const payment = {
+    key: "payment_due" as const,
+    vars: { name: "Asha", gym: "Iron Den", amountPaise: 150000, dueDate: "2026-12-05" },
+  };
+
+  it("start with sensible defaults and reject nonsense", async () => {
+    const { person, url, patch } = await appMember();
+    const res = await api.inject({ method: "GET", url, headers: person.headers });
+    expect(res.json()).toEqual({
+      locale: "en",
+      disabledChannels: [],
+      mutedCategories: [],
+      quietHours: { start: "21:00", end: "08:00" },
+    });
+    expect((await patch({ quietHours: { start: "25:00", end: "08:00" } })).statusCode).toBe(400);
+    // Messages about payments and cancellations cannot be muted.
+    expect((await patch({ mutedCategories: ["service"] })).statusCode).toBe(400);
+    const stranger = await signedInUser(api, dbh.db);
+    expect((await api.inject({ method: "GET", url, headers: stranger.headers })).statusCode).toBe(
+      404,
+    );
+  });
+
+  it("send messages in the member's language, on the channels they allow", async () => {
+    const { g, phone, memberId, patch } = await appMember();
+    const res = await patch({ locale: "hi", disabledChannels: ["whatsapp", "whatsapp"] });
+    expect(res.json()).toMatchObject({ locale: "hi", disabledChannels: ["whatsapp"] });
+    await queue(g, memberId);
+    const c = fakes();
+    await runNotificationDelivery(dbh.db, c.all, options, NOON);
+    expect(c.whatsapp.sent.filter((m) => m.to === phone)).toEqual([]);
+    const [sms] = c.sms.sent.filter((m) => m.to === phone);
+    expect(sms?.body).toContain("नमस्ते Asha");
+  });
+
+  it("drop the kinds of message a member muted, but still send payment messages", async () => {
+    const { g, memberId, patch } = await appMember();
+    await patch({ mutedCategories: ["engagement", "reminders"] });
+    await queue(g, memberId);
+    await queue(g, memberId, payment);
+    await runNotificationDelivery(dbh.db, fakes().all, options, NOON);
+    const rows = await rowsOf(g, memberId);
+    expect(rows.find((r) => r.key === "inactive")).toMatchObject({
+      status: "skipped",
+      lastError: "muted by the member",
+    });
+    expect(rows.find((r) => r.key === "payment_due")?.status).toBe("sent");
+  });
+
+  it("hold messages that can wait until quiet hours end, while urgent ones go at once", async () => {
+    const { g, phone, memberId } = await appMember();
+    await queue(g, memberId, payment);
+    await queue(g, memberId, {
+      key: "class_cancelled",
+      vars: {
+        name: "Asha",
+        className: "Yoga",
+        startsAt: NOON.toISOString(),
+        reason: "Coach unwell",
+      },
+    });
+    const c = fakes();
+    const night = ist(11); // 23:00 in India
+    await runNotificationDelivery(dbh.db, c.all, options, night);
+    expect(c.whatsapp.sent.filter((m) => m.to === phone).map((m) => m.key)).toEqual([
+      "class_cancelled",
+    ]);
+    const held = (await rowsOf(g, memberId)).find((r) => r.key === "payment_due");
+    expect(held).toMatchObject({ status: "pending", attempts: 0 });
+    expect(held?.sendAfter).toEqual(ist(20)); // 08:00 the next morning
+
+    await runNotificationDelivery(dbh.db, c.all, options, ist(20));
+    expect((await rowsOf(g, memberId)).find((r) => r.key === "payment_due")?.status).toBe("sent");
+  });
+
+  it("follow the member's own quiet hours", async () => {
+    const { g, memberId, patch } = await appMember();
+    await patch({ quietHours: { start: "11:00", end: "14:00" } });
+    await queue(g, memberId);
+    await runNotificationDelivery(dbh.db, fakes().all, options, NOON);
+    expect((await rowsOf(g, memberId))[0]?.sendAfter).toEqual(ist(2));
   });
 });

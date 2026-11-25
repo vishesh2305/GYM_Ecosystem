@@ -1,4 +1,10 @@
-import { CHANNELS, type MessageKey } from "@gym/domain";
+import {
+  CHANNELS,
+  DEFAULT_QUIET_HOURS,
+  LOCALES,
+  MUTABLE_CATEGORIES,
+  type MessageKey,
+} from "@gym/domain";
 import { sql } from "drizzle-orm";
 import {
   index,
@@ -77,3 +83,26 @@ export const pushDevices = pgTable(
     index("push_devices_user_idx").on(t.userId),
   ],
 );
+
+/** How a member wants to hear from their gym. No row means the defaults. */
+export const notificationPreferences = pgTable("notification_preferences", {
+  memberId: uuid("member_id")
+    .primaryKey()
+    .references(() => members.id, { onDelete: "cascade" }),
+  tenantId: uuid("tenant_id")
+    .notNull()
+    .references(() => organisations.id, { onDelete: "cascade" }),
+  locale: text("locale", { enum: LOCALES }).notNull().default("en"),
+  disabledChannels: text("disabled_channels", { enum: CHANNELS })
+    .array()
+    .notNull()
+    .default(sql`'{}'`),
+  mutedCategories: text("muted_categories", { enum: MUTABLE_CATEGORIES })
+    .array()
+    .notNull()
+    .default(sql`'{}'`),
+  /** "HH:MM" in the gym's time zone; equal values mean no quiet hours. */
+  quietStart: text("quiet_start").notNull().default(DEFAULT_QUIET_HOURS.start),
+  quietEnd: text("quiet_end").notNull().default(DEFAULT_QUIET_HOURS.end),
+  ...timestamps,
+});

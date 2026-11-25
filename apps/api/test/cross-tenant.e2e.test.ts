@@ -50,6 +50,7 @@ const SAMPLE_BODIES: Record<string, object> = {
     startsAt: "2099-01-01T05:00:00.000Z",
     durationMinutes: 60,
   },
+  updateMyNotificationPreferences: { locale: "hi" },
   updateBranch: { name: "Renamed by intruder" },
   inviteStaff: { channel: "sms", phone: "+919000000001", role: "trainer" },
   updateStaff: { role: "trainer" },

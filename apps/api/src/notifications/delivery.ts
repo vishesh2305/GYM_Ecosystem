@@ -1,8 +1,15 @@
 import { withSystem, withTenant, type Database, type Tx } from "@gym/db";
 import { and, asc, eq, isNull, lte, sql } from "@gym/db/orm";
 import { members, notifications, organisations } from "@gym/db/schema";
-import { renderMessage, type MessageKey, type MessageVars } from "@gym/domain";
+import {
+  MESSAGE_TEMPLATES,
+  quietUntil,
+  renderMessage,
+  type MessageKey,
+  type MessageVars,
+} from "@gym/domain";
 import type { ChannelAdapter, Recipient } from "./channels";
+import { preferencesOf } from "./preferences";
 
 /**
  * Queue a message for a member, inside the caller's (tenant-scoped) transaction. The dedupe key makes a
@@ -37,6 +44,8 @@ export interface DeliveryOptions {
 
 export interface DeliveryTotals {
   sent: number;
+  /** Held back until the member's quiet hours end. */
+  deferred: number;
   retrying: number;
   failed: number;
   skipped: number;
@@ -82,16 +91,27 @@ async function deliver(
     .where(and(eq(members.id, n.memberId), isNull(members.deletedAt)));
   if (!member) return finish("skipped", { status: "skipped", lastError: "member removed" });
 
+  const template = MESSAGE_TEMPLATES[n.key];
+  const prefs = await preferencesOf(tx, member.id);
+  if ((prefs.mutedCategories as readonly string[]).includes(template.category))
+    return finish("skipped", { status: "skipped", lastError: "muted by the member" });
+  const quietEnds = template.urgent
+    ? null
+    : quietUntil(now, org.timezone, { start: prefs.quietStart, end: prefs.quietEnd });
+  if (quietEnds) return finish("deferred", { sendAfter: quietEnds });
+
   const recipient: Recipient = {
     phone: member.phone,
     email: member.email,
     pushTokens: await pushTokens(tx, member.id),
   };
-  const usable = channels.filter((c) => c.reaches(recipient));
+  const usable = channels.filter(
+    (c) => !prefs.disabledChannels.includes(c.channel) && c.reaches(recipient),
+  );
   if (!usable.length)
     return finish("skipped", { status: "skipped", lastError: "no way to reach the member" });
 
-  const locale = "en";
+  const locale = prefs.locale;
   const message = renderMessage(n.key, locale, n.vars, org.timezone);
   const errors: string[] = [];
   for (const adapter of usable) {
@@ -139,7 +159,7 @@ export async function runNotificationDelivery(
       .from(organisations)
       .where(isNull(organisations.deletedAt)),
   );
-  const totals: DeliveryTotals = { sent: 0, retrying: 0, failed: 0, skipped: 0 };
+  const totals: DeliveryTotals = { sent: 0, deferred: 0, retrying: 0, failed: 0, skipped: 0 };
   for (const org of orgs) {
     // shortcut: providers are called inside the claiming transaction; fine at a few hundred per run, move to
     // claim-then-send if runs get long.

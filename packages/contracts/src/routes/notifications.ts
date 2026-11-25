@@ -45,3 +45,37 @@ export const listMemberNotifications = defineRoute({
     }),
   ),
 });
+
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "use HH:MM (24-hour)");
+
+export const notificationPreferences = z.object({
+  /** Language of messages. */
+  locale: z.enum(["en", "hi"]),
+  /** Channels never to use. Messages about payments and cancellations still go out on the others. */
+  disabledChannels: z.array(z.enum(["push", "whatsapp", "sms", "email"])),
+  /** Kinds of message to stop: reminders (renewals, class reminders) and engagement ("we miss you"). */
+  mutedCategories: z.array(z.enum(["reminders", "engagement"])),
+  /** In the gym's time zone. Messages that can wait are held until the end; equal times mean none. */
+  quietHours: z.object({ start: hhmm, end: hhmm }),
+});
+
+const myGymParams = z.object({ orgId: z.uuid() });
+
+export const getMyNotificationPreferences = defineRoute({
+  method: "GET",
+  path: "/v1/me/gyms/{orgId}/notification-preferences",
+  summary: "How I want to hear from this gym",
+  tag: "notifications",
+  params: myGymParams,
+  response: notificationPreferences,
+});
+
+export const updateMyNotificationPreferences = defineRoute({
+  method: "PATCH",
+  path: "/v1/me/gyms/{orgId}/notification-preferences",
+  summary: "Change how I hear from this gym (only the fields sent change)",
+  tag: "notifications",
+  params: myGymParams,
+  body: notificationPreferences.partial(),
+  response: notificationPreferences,
+});
