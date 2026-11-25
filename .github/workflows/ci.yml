@@ -47,6 +47,30 @@ jobs:
       - name: Build the server image and check it migrates, starts and is ready
         run: apps/api/scripts/smoke-image.sh
 
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.9
+      - run: terraform fmt -recursive -check infra/terraform
+      - name: Validate every root (no cloud credentials needed)
+        run: |
+          for root in infra/terraform/bootstrap infra/terraform/envs/*; do
+            terraform -chdir="$root" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="$root" validate
+          done
+      - name: Lint
+        run: >
+          docker run --rm -v "$PWD/infra/terraform:/tf" -w /tf ghcr.io/terraform-linters/tflint:v0.65.0
+          --config /tf/.tflint.hcl --recursive
+      - name: Security misconfigurations (high and critical)
+        run: >
+          docker run --rm -v "$PWD/infra/terraform:/tf" aquasec/trivy:0.75.0
+          config --quiet --severity HIGH,CRITICAL --exit-code 1 /tf
+
   api-breaking-changes:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

@@ -6,3 +6,9 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
+# Terraform: providers and state stay local; lock files of the roots are committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example

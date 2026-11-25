@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars (git ignores it) and fill in. No secrets here except synthetic_flows, which are
+# staging-only test values.
+zone_name                = "staging.example.in"
+image                    = "<account>.dkr.ecr.ap-south-1.amazonaws.com/gym-api:<git sha>"
+alert_email              = "alerts@example.in"
+supabase_organization_id = "<supabase organisation slug>"
+admin_cidrs              = []
+otlp_endpoint            = "https://otlp-gateway-prod-ap-south-1.grafana.net/otlp"
+grafana_prometheus_uid   = "grafanacloud-prom"
+synthetic_flows = {
+  SYNTH_PHONE          = "+919910000001"         # the first demo member
+  SYNTH_OTP            = "<code in OTP_TEST_NUMBERS>"
+  SYNTH_KIOSK_TOKEN    = "<printed by the seed-demo task>"
+  SYNTH_WEBHOOK_SECRET = "<RAZORPAY_WEBHOOK_SECRET of staging>"
+}

@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (git ignores it) and fill in. No secrets here.
+zone_name                = "cloud.example.in"
+image                    = "<account>.dkr.ecr.ap-south-1.amazonaws.com/gym-api:<git sha>"
+alert_email              = "alerts@example.in"
+supabase_organization_id = "<supabase organisation slug>"
+admin_cidrs              = []
+otlp_endpoint            = "https://otlp-gateway-prod-ap-south-1.grafana.net/otlp"
+grafana_prometheus_uid   = "grafanacloud-prom"
