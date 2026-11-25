@@ -53,7 +53,9 @@ export class OtpService {
     }
 
     const id = v7();
-    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const testCode =
+      input.channel === "sms" ? this.env.OTP_TEST_NUMBERS.get(destination) : undefined;
+    const code = testCode ?? String(randomInt(0, 1_000_000)).padStart(6, "0");
     const expiresAt = new Date(Date.now() + this.env.OTP_TTL_SECONDS * 1000);
     await this.db.db.insert(otpChallenges).values({
       id,
@@ -63,6 +65,9 @@ export class OtpService {
       expiresAt,
       ip,
     });
+
+    const challenge = { challengeId: id, expiresAt: expiresAt.toISOString() };
+    if (testCode) return challenge; // a test number: nothing is sent
 
     const minutes = Math.max(1, Math.round(this.env.OTP_TTL_SECONDS / 60));
     const text = `${code} is your Gym Platform sign-in code. It expires in ${minutes} minutes. Never share it.`;
@@ -80,7 +85,7 @@ export class OtpService {
         "We could not send the code right now. Please try again.",
       );
     }
-    return { challengeId: id, expiresAt: expiresAt.toISOString() };
+    return challenge;
   }
 
   /** Checks the code and returns the user it signs in (creating the account on first sign-in). */

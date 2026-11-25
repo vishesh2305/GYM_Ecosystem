@@ -74,6 +74,13 @@ export const apiEnvSchema = baseEnvSchema
     OTP_MAX_PER_WINDOW: z.coerce.number().int().positive().default(3),
     OTP_WINDOW_SECONDS: z.coerce.number().int().positive().default(900),
     DEFAULT_PHONE_REGION: z.string().length(2).default("IN"),
+    /**
+     * Test sign-in numbers with a fixed code and no SMS, as "+919900000001:123456" pairs (synthetic checks,
+     * app store reviewers on staging). Refused in production.
+     */
+    OTP_TEST_NUMBERS: csv
+      .pipe(z.array(z.string().regex(/^\+\d{8,15}:\d{6}$/, "must be +<number>:<6 digits>")))
+      .transform((pairs) => new Map(pairs.map((p) => p.split(":") as [string, string]))),
     /** "console" prints SMS to the log (development/tests); "msg91" sends DLT templates through MSG91. */
     SMS_PROVIDER: z.enum(["console", "msg91"]).default("console"),
     MSG91_AUTH_KEY: z.string().optional(),
@@ -130,6 +137,13 @@ export const apiEnvSchema = baseEnvSchema
     APPLE_ISSUERS: csv.default(["https://appleid.apple.com"]),
   })
   .superRefine((env, ctx) => {
+    if (env.DEPLOY_ENV === "production" && env.OTP_TEST_NUMBERS.size > 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["OTP_TEST_NUMBERS"],
+        message: "test sign-in numbers cannot be used in production",
+      });
+    }
     if (env.NODE_ENV === "production" && env.SMS_PROVIDER === "console") {
       ctx.addIssue({
         code: "custom",

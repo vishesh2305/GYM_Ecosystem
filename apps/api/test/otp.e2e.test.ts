@@ -191,9 +191,53 @@ describe("codes are hard to abuse", () => {
     expect(statuses[10]).toBe(429);
   });
 
+  it("refuses test sign-in numbers in production", () => {
+    const env = (DEPLOY_ENV: string) =>
+      parseEnv(apiEnvSchema, rawTestEnv({ DEPLOY_ENV, OTP_TEST_NUMBERS: "+919900000009:123456" }));
+    expect(env("staging").OTP_TEST_NUMBERS.get("+919900000009")).toBe("123456");
+    expect(() => env("production")).toThrow(/OTP_TEST_NUMBERS/);
+    expect(() =>
+      parseEnv(apiEnvSchema, rawTestEnv({ OTP_TEST_NUMBERS: "+919900000009:12" })),
+    ).toThrow(/OTP_TEST_NUMBERS/);
+  });
+
   it("refuses to start in production with the development SMS sender", () => {
     expect(() =>
       parseEnv(apiEnvSchema, rawTestEnv({ NODE_ENV: "production", SMS_PROVIDER: "console" })),
     ).toThrow(/SMS_PROVIDER/);
+  });
+});
+
+describe("test sign-in numbers (staging)", () => {
+  it("sign in with their fixed code, send nothing, and keep every other limit", async () => {
+    const app = (
+      await createApp(testEnv({ DEPLOY_ENV: "staging", OTP_TEST_NUMBERS: "+919900000009:246810" }))
+    ).app;
+    const sender = app.get<ConsoleSmsSender>(SMS_SENDER);
+    const ask = () =>
+      app.inject({
+        method: "POST",
+        url: "/v1/auth/otp/request",
+        payload: { channel: "sms", phone: "9900000009" },
+        remoteAddress: nextIp(),
+      });
+    const check = (challengeId: string, code: string) =>
+      app.inject({
+        method: "POST",
+        url: "/v1/auth/otp/verify",
+        payload: { challengeId, code },
+        remoteAddress: nextIp(),
+      });
+    try {
+      const wrong = (await ask()).json<{ challengeId: string }>();
+      expect((await check(wrong.challengeId, "111111")).statusCode).toBe(400);
+      const right = (await ask()).json<{ challengeId: string }>();
+      expect((await check(right.challengeId, "246810")).statusCode).toBe(200);
+      expect(sender.sent.filter((m) => m.to === "+919900000009")).toEqual([]);
+      expect((await ask()).statusCode).toBe(202);
+      expect((await ask()).statusCode).toBe(429); // 3 codes per 15 minutes, as for everyone
+    } finally {
+      await app.close();
+    }
   });
 });
