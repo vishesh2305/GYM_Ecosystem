@@ -2,6 +2,7 @@ import { routes, type Route } from "@gym/contracts";
 import { createDb, withTenant, type DbHandle } from "@gym/db";
 import { eq } from "@gym/db/orm";
 import {
+  bookings,
   branches,
   checkIns,
   classes,
@@ -41,6 +42,7 @@ const SAMPLE_BODIES: Record<string, object> = {
   },
   updateClass: { name: "Renamed by intruder" },
   cancelClassSession: { reason: "Intruder" },
+  bookSession: { memberId: "00000000-0000-7000-8000-000000000000" },
   updateBranch: { name: "Renamed by intruder" },
   inviteStaff: { channel: "sms", phone: "+919000000001", role: "trainer" },
   updateStaff: { role: "trainer" },
@@ -86,6 +88,7 @@ async function snapshot() {
     checkIns: await tx.select().from(checkIns),
     classes: await tx.select().from(classes),
     sessions: await tx.select().from(classSessions),
+    bookings: await tx.select().from(bookings),
   }));
 }
 
@@ -236,6 +239,15 @@ beforeAll(async () => {
   );
   victim.sessionId = victimSession?.id ?? "";
   expect(victim.sessionId).not.toBe("");
+  victim.bookingId = (
+    await api.inject({
+      method: "POST",
+      url: `${base}/sessions/${victim.sessionId}/bookings`,
+      headers: victimOwner.headers,
+      payload: { memberId: victim.memberId },
+    })
+  ).json().id;
+  expect(victim.bookingId).toBeTruthy();
   expect(victim.checkInId).not.toBe("");
 
   const attacker = await signedInStaff(api, dbh.db, { name: "Attacker owner" });

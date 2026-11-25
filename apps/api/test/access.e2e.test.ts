@@ -486,41 +486,7 @@ describe("how busy each branch is", () => {
     { timeout: 120_000 },
     async () => {
       const g = await gymWithMember(api, dbh.db);
-      const orgId = g.base.split("/").at(-1) ?? "";
-      const plan = await g.plan({});
-      const today = new Date().toISOString().slice(0, 10);
-      const ids = await withTenant(dbh.db, orgId, async (tx) => {
-        const people = await tx
-          .insert(members)
-          .values(
-            Array.from({ length: 1000 }, (_, i) => ({
-              tenantId: orgId,
-              name: `Member ${i}`,
-              homeBranchId: g.branch.id,
-            })),
-          )
-          .returning({ id: members.id });
-        await tx.insert(memberships).values(
-          people.map((p) => ({
-            tenantId: orgId,
-            memberId: p.id,
-            planId: plan.id,
-            planName: "Monthly",
-            status: "active" as const,
-            startDate: today,
-            endDate: addDays(today, 29),
-            isTrial: false,
-            pricePaise: 0,
-            joiningFeePaise: 0,
-            gstRateBps: 0,
-            gstPaise: 0,
-            totalPaise: 0,
-            maxFreezes: 0,
-            maxFreezeDays: 0,
-          })),
-        );
-        return people.map((p) => p.id);
-      });
+      const ids = await g.membersWithMembership(1000);
       const results = await Promise.all(
         ids.map((memberId) =>
           api

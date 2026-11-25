@@ -9,9 +9,11 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { id, timestamps } from "../columns";
+import { members } from "./membership";
 import { branches, organisations, staffMembers } from "./tenancy";
 
 /** A weekly class on the timetable ("Yoga, Mon/Wed/Fri 07:00, 20 places"). Sessions are generated from it. */
@@ -84,5 +86,46 @@ export const classSessions = pgTable(
     index("class_sessions_branch_start_idx").on(t.tenantId, t.branchId, t.startsAt),
     check("class_sessions_capacity_positive", sql`${t.capacity} > 0`),
     check("class_sessions_ends_after_start", sql`${t.endsAt} > ${t.startsAt}`),
+  ],
+);
+
+export const BOOKING_STATUSES = [
+  "confirmed",
+  "waitlisted",
+  "cancelled",
+  "late_cancelled",
+  "attended",
+  "no_show",
+] as const;
+
+/**
+ * A member's place in a session, or their place in its waitlist. The waitlist is served in id order (UUIDv7,
+ * created while the session row is locked, so it follows the order bookings were accepted).
+ */
+export const bookings = pgTable(
+  "bookings",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => classSessions.id),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id),
+    status: text("status", { enum: BOOKING_STATUSES }).notNull(),
+    bookedBy: uuid("booked_by"),
+    promotedAt: timestamp("promoted_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("bookings_one_live_per_member")
+      .on(t.sessionId, t.memberId)
+      .where(sql`${t.status} in ('confirmed', 'waitlisted')`),
+    index("bookings_session_idx").on(t.tenantId, t.sessionId, t.status),
+    index("bookings_member_idx").on(t.tenantId, t.memberId, t.createdAt),
   ],
 );

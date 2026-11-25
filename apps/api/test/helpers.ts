@@ -1,6 +1,7 @@
 import { parseEnv } from "@gym/config";
 import { withTenant, type Database } from "@gym/db";
-import { staffMembers, users } from "@gym/db/schema";
+import { members, memberships, staffMembers, users } from "@gym/db/schema";
+import { addDays } from "@gym/domain";
 import { createHmac, generateKeyPairSync, randomBytes } from "node:crypto";
 import { inject } from "vitest";
 import { SessionService } from "../src/auth/session.service";
@@ -109,6 +110,51 @@ export async function gymWithMember(
           ...body,
         })
       ).json(),
+    /** `count` more members at the main branch, each with a free running 30-day membership. */
+    membersWithMembership: async (count: number): Promise<string[]> => {
+      const planId = (
+        await call("POST", `${base}/plans`, {
+          name: "Free month",
+          durationUnit: "month",
+          durationCount: 1,
+          pricePaise: 0,
+        })
+      ).json().id;
+      const today = new Date().toISOString().slice(0, 10);
+      const orgId = created.organisation.id;
+      return withTenant(db, orgId, async (tx) => {
+        const people = await tx
+          .insert(members)
+          .values(
+            Array.from({ length: count }, (_, i) => ({
+              tenantId: orgId,
+              name: `Member ${i + 1}`,
+              homeBranchId: created.branch.id,
+            })),
+          )
+          .returning({ id: members.id });
+        await tx.insert(memberships).values(
+          people.map((p) => ({
+            tenantId: orgId,
+            memberId: p.id,
+            planId,
+            planName: "Free month",
+            status: "active" as const,
+            startDate: today,
+            endDate: addDays(today, 29),
+            isTrial: false,
+            pricePaise: 0,
+            joiningFeePaise: 0,
+            gstRateBps: 0,
+            gstPaise: 0,
+            totalPaise: 0,
+            maxFreezes: 0,
+            maxFreezeDays: 0,
+          })),
+        );
+        return people.map((p) => p.id);
+      });
+    },
     /** Another signed-in staff member of this gym with `role` (limited to `branchIds` when given). */
     staff: async (
       role: "owner" | "manager" | "front_desk" | "trainer",

@@ -1,6 +1,7 @@
 import { withSystem, withTenant, type Database, type Tx } from "@gym/db";
-import { and, eq, gt, isNull } from "@gym/db/orm";
-import { classes, classSessions, organisations, staffMembers } from "@gym/db/schema";
+import { and, eq, gt, gte, inArray, isNull, lt } from "@gym/db/orm";
+import type { routes } from "@gym/contracts";
+import { bookings, classes, classSessions, organisations, staffMembers } from "@gym/db/schema";
 import { occurrences, todayIn, zonedTime } from "@gym/domain";
 import { BadRequestException } from "@nestjs/common";
 import { z } from "zod";
@@ -11,6 +12,36 @@ export const HORIZON_DAYS = 14;
 
 type GymClass = typeof classes.$inferSelect;
 export type Session = typeof classSessions.$inferSelect;
+export type SessionOut = z.output<typeof routes.listClassSessions.response>[number];
+
+const DAY = 86_400_000;
+const MAX_RANGE_DAYS = 31;
+
+export const toSession = (s: Session, places = { booked: 0, waitlisted: 0 }): SessionOut => ({
+  id: s.id,
+  branchId: s.branchId,
+  classId: s.classId,
+  kind: s.kind,
+  name: s.name,
+  room: s.room,
+  instructorId: s.instructorId,
+  startsAt: s.startsAt.toISOString(),
+  endsAt: s.endsAt.toISOString(),
+  capacity: s.capacity,
+  cancelWindowMinutes: s.cancelWindowMinutes,
+  status: s.status,
+  cancelReason: s.cancelReason,
+  ...places,
+});
+
+/** Sessions starting in [from, to): default the next 7 days, at most MAX_RANGE_DAYS. */
+export function sessionRange(query: { from?: string | undefined; to?: string | undefined }) {
+  const from = query.from ? new Date(query.from) : new Date();
+  const to = query.to ? new Date(query.to) : new Date(from.getTime() + 7 * DAY);
+  if (to <= from || to.getTime() - from.getTime() > MAX_RANGE_DAYS * DAY)
+    throw new BadRequestException(`Ask for a range of up to ${MAX_RANGE_DAYS} days`);
+  return and(gte(classSessions.startsAt, from), lt(classSessions.startsAt, to));
+}
 
 /** Delivered by notifications (A14) to every member who had a place or was waiting. */
 export const sessionCancelled = defineEvent(
@@ -90,7 +121,7 @@ export async function cancelSessions(
       .where(and(eq(classSessions.id, session.id), eq(classSessions.status, "scheduled")))
       .returning();
     if (!row) continue;
-    const memberIds: string[] = [];
+    const memberIds = await releaseBookings(tx, row.id);
     await appendEvent(
       tx,
       sessionCancelled,
@@ -129,4 +160,16 @@ export async function assertInstructor(tx: Tx, instructorId: string | null | und
     .from(staffMembers)
     .where(and(eq(staffMembers.id, instructorId), eq(staffMembers.status, "active")));
   if (!staff) throw new BadRequestException("The instructor is not on this gym's staff");
+}
+
+/** End every live booking of a cancelled session; returns the members concerned. */
+async function releaseBookings(tx: Tx, sessionId: string): Promise<string[]> {
+  const released = await tx
+    .update(bookings)
+    .set({ status: "cancelled", cancelledAt: new Date() })
+    .where(
+      and(eq(bookings.sessionId, sessionId), inArray(bookings.status, ["confirmed", "waitlisted"])),
+    )
+    .returning({ memberId: bookings.memberId });
+  return released.map((r) => r.memberId);
 }

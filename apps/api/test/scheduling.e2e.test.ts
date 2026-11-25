@@ -1,16 +1,17 @@
 import { createDb, withTenant, type DbHandle } from "@gym/db";
 import { asc, eq } from "@gym/db/orm";
-import { classes, classSessions, outboxEvents } from "@gym/db/schema";
+import { bookings, classes, classSessions, outboxEvents } from "@gym/db/schema";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { generateSessions, runSessionGeneration } from "../src/scheduling/timetable";
-import { gymWithMember, testEnv } from "./helpers";
+import { gymWithMember, signedInUser, testEnv } from "./helpers";
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
 let dbh: DbHandle;
 
 beforeAll(async () => {
-  ({ app: api } = await createApp(testEnv()));
+  // The parallel booking test sends 200 requests as one owner.
+  ({ app: api } = await createApp(testEnv({ RATE_LIMIT_MAX: "2000" })));
   dbh = createDb(testEnv().DATABASE_URL);
 });
 afterAll(async () => {
@@ -211,5 +212,195 @@ describe("class timetable", () => {
     expect((await t.g.call("POST", cancelUrl, { reason: "again" })).json().cancelReason).toBe(
       "Instructor unwell",
     );
+  });
+});
+
+/** A daily class with `capacity` places, `count` members with running memberships, and its next session. */
+async function sessionWithMembers(count: number, capacity: number, body: object = {}) {
+  const t = await gymWithClass({ capacity, ...body });
+  const memberIds = await t.g.membersWithMembership(count);
+  const [session] = await t.sessions();
+  if (!session) throw new Error("no session");
+  const bookingsUrl = `${t.g.base}/sessions/${session.id}/bookings`;
+  const book = (memberId: string, headers = t.g.owner.headers) =>
+    api.inject({ method: "POST", url: bookingsUrl, headers, payload: { memberId } });
+  const roster = async () => (await t.g.call("GET", bookingsUrl)).json();
+  return { ...t, memberIds, session, bookingsUrl, book, roster };
+}
+
+const eventsOf = async (orgId: string, type: string) =>
+  (
+    await dbh.db
+      .select()
+      .from(outboxEvents)
+      .where(eq(outboxEvents.tenantId, orgId))
+      .orderBy(asc(outboxEvents.id))
+  )
+    .filter((e) => e.type === type)
+    .map((e) => e.payload as Record<string, unknown>);
+
+describe("booking classes", () => {
+  it("200 members booking 20 places at once: exactly 20 get a place, the rest wait in order", async () => {
+    const t = await sessionWithMembers(200, 20);
+    const results = await Promise.all(t.memberIds.map((id) => t.book(id).then((r) => r.json())));
+    const confirmed = results.filter((r) => r.status === "confirmed");
+    const waiting = results.filter((r) => r.status === "waitlisted");
+    expect(confirmed).toHaveLength(20);
+    expect(waiting).toHaveLength(180);
+    expect(waiting.map((w) => w.waitlistPosition).sort((a, b) => a - b)).toEqual(
+      Array.from({ length: 180 }, (_, i) => i + 1),
+    );
+    const listed = (await t.g.call("GET", `${t.g.base}/sessions`)).json();
+    expect(listed.find((s: { id: string }) => s.id === t.session.id)).toMatchObject({
+      booked: 20,
+      waitlisted: 180,
+    });
+    const roster = await t.roster();
+    expect(roster.filter((b: { status: string }) => b.status === "waitlisted")[0]).toMatchObject({
+      waitlistPosition: 1,
+      memberName: expect.stringMatching(/^Member /),
+    });
+  });
+
+  it("booking twice keeps one booking; cancelling early gives the place to the first in line", async () => {
+    const t = await sessionWithMembers(3, 1, { cancelWindowMinutes: 0 });
+    const [a, b, c] = t.memberIds;
+    const first = (await t.book(a ?? "")).json();
+    expect((await t.book(a ?? "")).json().id).toBe(first.id);
+    const second = (await t.book(b ?? "")).json();
+    const third = (await t.book(c ?? "")).json();
+    expect([second.waitlistPosition, third.waitlistPosition]).toEqual([1, 2]);
+
+    const cancelled = await t.g.call("POST", `${t.g.base}/bookings/${first.id}/cancel`);
+    expect(cancelled.json()).toMatchObject({ status: "cancelled" });
+    const roster = await t.roster();
+    expect(roster.find((r: { id: string }) => r.id === second.id)).toMatchObject({
+      status: "confirmed",
+      waitlistPosition: null,
+    });
+    expect(roster.find((r: { id: string }) => r.id === third.id).waitlistPosition).toBe(1);
+    expect(await eventsOf(t.orgId, "booking.promoted")).toEqual([
+      expect.objectContaining({ bookingId: second.id, memberId: b }),
+    ]);
+    // Cancelling again changes nothing; a waiting member's cancellation is never late.
+    expect((await t.g.call("POST", `${t.g.base}/bookings/${first.id}/cancel`)).json().status).toBe(
+      "cancelled",
+    );
+    expect((await t.g.call("POST", `${t.g.base}/bookings/${third.id}/cancel`)).json().status).toBe(
+      "cancelled",
+    );
+  });
+
+  it("cancelling inside the cancellation window counts as late", async () => {
+    const t = await sessionWithMembers(1, 5, { cancelWindowMinutes: 2880 });
+    const booked = (await t.book(t.memberIds[0] ?? "")).json();
+    expect((await t.g.call("POST", `${t.g.base}/bookings/${booked.id}/cancel`)).json().status).toBe(
+      "late_cancelled",
+    );
+  });
+
+  it("refuses members without a membership, other gyms' members, and sessions that are off or started", async () => {
+    const t = await sessionWithMembers(1, 5);
+    expect((await t.book(t.g.member.id)).statusCode).toBe(400); // the helper's member never enrolled
+    const elsewhere = await gymWithMember(api, dbh.db);
+    expect((await t.book(elsewhere.member.id)).statusCode).toBe(404);
+
+    const [, later] = await t.sessions();
+    await t.g.call("POST", `${t.g.base}/sessions/${later?.id}/cancel`, { reason: "Holiday" });
+    expect(
+      (
+        await t.g.call("POST", `${t.g.base}/sessions/${later?.id}/bookings`, {
+          memberId: t.memberIds[0],
+        })
+      ).statusCode,
+    ).toBe(400);
+    await withTenant(dbh.db, t.orgId, (tx) =>
+      tx
+        .update(classSessions)
+        .set({ startsAt: new Date(Date.now() - 60_000) })
+        .where(eq(classSessions.id, t.session.id)),
+    );
+    expect((await t.book(t.memberIds[0] ?? "")).statusCode).toBe(400);
+  });
+
+  it("front desk books members; trainers can see who is booked but not book", async () => {
+    const t = await sessionWithMembers(1, 5);
+    const desk = await t.g.staff("front_desk");
+    expect((await t.book(t.memberIds[0] ?? "", desk.headers)).statusCode).toBe(201);
+    const trainer = await t.g.staff("trainer");
+    expect((await t.book(t.memberIds[0] ?? "", trainer.headers)).statusCode).toBe(403);
+    expect(
+      (await api.inject({ method: "GET", url: t.bookingsUrl, headers: trainer.headers })).json(),
+    ).toHaveLength(1);
+  });
+
+  it("more places promote waiting members; a cancelled session frees everyone and tells them", async () => {
+    const t = await sessionWithMembers(3, 1);
+    for (const id of t.memberIds) await t.book(id);
+    await t.g.call("PATCH", `${t.g.base}/classes/${t.cls.id}`, { capacity: 2 });
+    const statuses = (await t.roster()).map((r: { status: string }) => r.status);
+    expect(statuses).toEqual(["confirmed", "confirmed", "waitlisted"]);
+
+    await t.g.call("POST", `${t.g.base}/sessions/${t.session.id}/cancel`, { reason: "Power cut" });
+    expect((await t.roster()).every((r: { status: string }) => r.status === "cancelled")).toBe(
+      true,
+    );
+    const [cancelledEvent] = (await eventsOf(t.orgId, "class_session.cancelled")).filter(
+      (e) => e.sessionId === t.session.id,
+    );
+    expect((cancelledEvent?.memberIds as string[]).sort()).toEqual([...t.memberIds].sort());
+  });
+
+  it("members see sessions with places left, book themselves, and cancel in the app", async () => {
+    const t = await gymWithClass({ capacity: 1 });
+    const phone = `+9197${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
+    const member = (
+      await t.g.call("POST", `${t.g.base}/members`, {
+        name: "Asha",
+        phone,
+        homeBranchId: t.g.branch.id,
+      })
+    ).json();
+    const plan = await t.g.plan({ pricePaise: 0, joiningFeePaise: 0 });
+    await t.g.call("POST", `${t.g.base}/members/${member.id}/memberships`, { planId: plan.id });
+    const me = await signedInUser(api, dbh.db, { phone });
+    const mine = `/v1/me/gyms/${t.orgId}`;
+    const asMe = (method: string, url: string) =>
+      api.inject({ method, url: `${mine}${url}`, headers: me.headers });
+
+    const [first] = (await asMe("GET", "/sessions")).json();
+    expect(first).toMatchObject({ booked: 0, capacity: 1, myBooking: null });
+    const booked = await asMe("POST", `/sessions/${first.id}/bookings`);
+    expect(booked.statusCode).toBe(201);
+    expect((await asMe("GET", "/sessions")).json()[0]).toMatchObject({
+      booked: 1,
+      myBooking: { id: booked.json().id, status: "confirmed" },
+    });
+    const [listed] = (await asMe("GET", "/bookings")).json();
+    expect(listed).toMatchObject({ id: booked.json().id, session: { id: first.id } });
+    expect((await asMe("POST", `/bookings/${booked.json().id}/cancel`)).json().status).toMatch(
+      /cancelled/,
+    );
+    const stranger = await signedInUser(api, dbh.db, { phone: "+919700000000" });
+    expect(
+      (
+        await api.inject({
+          method: "GET",
+          url: `${mine}/sessions`,
+          headers: stranger.headers,
+        })
+      ).statusCode,
+    ).toBe(404);
+    const otherBooking = await t.g.membersWithMembership(1);
+    const theirs = (
+      await t.g.call("POST", `${t.g.base}/sessions/${first.id}/bookings`, {
+        memberId: otherBooking[0],
+      })
+    ).json();
+    expect((await asMe("POST", `/bookings/${theirs.id}/cancel`)).statusCode).toBe(404);
+    const rows = await withTenant(dbh.db, t.orgId, (tx) =>
+      tx.select().from(bookings).where(eq(bookings.sessionId, first.id)),
+    );
+    expect(rows).toHaveLength(2);
   });
 });

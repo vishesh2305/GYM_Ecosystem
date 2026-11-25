@@ -2,7 +2,7 @@ import type { routes } from "@gym/contracts";
 import { withTenant, type DbHandle, type Tx } from "@gym/db";
 import { and, count, desc, eq, inArray, isNull, lt, ne } from "@gym/db/orm";
 import { branches, checkIns, invoices, members, memberships, plans } from "@gym/db/schema";
-import { entryDenial } from "@gym/domain";
+import { entryDenial, type EntryDenial } from "@gym/domain";
 import {
   Body,
   Controller,
@@ -52,6 +52,46 @@ const toVisit = (v: Visit): VisitOut => ({
 });
 
 /**
+ * The membership rules for this member at this branch on `onDate` (default today, in the gym's time zone).
+ * Dues count when unpaid past their due date as of today.
+ */
+export async function entryDenialFor(
+  tx: Tx,
+  memberId: string,
+  branchId: string,
+  onDate?: string,
+): Promise<EntryDenial | null> {
+  const today = await orgToday(tx);
+  const held = await tx
+    .select({
+      status: memberships.status,
+      startDate: memberships.startDate,
+      endDate: memberships.endDate,
+      branchIds: plans.branchIds,
+    })
+    .from(memberships)
+    .innerJoin(plans, eq(plans.id, memberships.planId))
+    .where(eq(memberships.memberId, memberId));
+  const [overdue] = await tx
+    .select({ n: count() })
+    .from(invoices)
+    .where(
+      and(
+        eq(invoices.memberId, memberId),
+        eq(invoices.kind, "invoice"),
+        inArray(invoices.status, ["issued", "partially_paid"]),
+        lt(invoices.dueDate, today),
+      ),
+    );
+  return entryDenial({
+    today: onDate ?? today,
+    branchId,
+    memberships: held,
+    overdueInvoices: overdue?.n ?? 0,
+  });
+}
+
+/**
  * Apply the entry rules and, if they pass, let the member in (inside the gym's tenant scope). A member already
  * inside this branch keeps their visit; one still marked inside another branch is moved here.
  */
@@ -73,34 +113,7 @@ export async function admit(
     .where(and(eq(members.id, entry.memberId), isNull(members.deletedAt)));
   if (!member) return { allowed: false, reason: "invalid_code", member: null, visit: null };
 
-  const today = await orgToday(tx);
-  const held = await tx
-    .select({
-      status: memberships.status,
-      startDate: memberships.startDate,
-      endDate: memberships.endDate,
-      branchIds: plans.branchIds,
-    })
-    .from(memberships)
-    .innerJoin(plans, eq(plans.id, memberships.planId))
-    .where(eq(memberships.memberId, member.id));
-  const [overdue] = await tx
-    .select({ n: count() })
-    .from(invoices)
-    .where(
-      and(
-        eq(invoices.memberId, member.id),
-        eq(invoices.kind, "invoice"),
-        inArray(invoices.status, ["issued", "partially_paid"]),
-        lt(invoices.dueDate, today),
-      ),
-    );
-  const reason = entryDenial({
-    today,
-    branchId: entry.branchId,
-    memberships: held,
-    overdueInvoices: overdue?.n ?? 0,
-  });
+  const reason = await entryDenialFor(tx, member.id, entry.branchId);
   if (reason) return { allowed: false, reason, member, visit: null };
 
   const moved = await tx

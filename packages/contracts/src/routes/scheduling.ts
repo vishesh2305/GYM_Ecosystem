@@ -126,3 +126,91 @@ export const cancelClassSession = defineRoute({
   body: z.object({ reason: z.string().trim().min(1).max(200) }),
   response: classSession,
 });
+
+export const booking = z.object({
+  id: z.uuid(),
+  sessionId: z.uuid(),
+  memberId: z.uuid(),
+  status: z.enum(["confirmed", "waitlisted", "cancelled", "late_cancelled", "attended", "no_show"]),
+  /** 1 = next in line; null unless waitlisted. */
+  waitlistPosition: z.number().int().nullable(),
+  promotedAt: z.iso.datetime().nullable(),
+  cancelledAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+});
+
+const bookingParams = z.object({ orgId: z.uuid(), bookingId: z.uuid() });
+const mySessionParams = z.object({ orgId: z.uuid(), sessionId: z.uuid() });
+
+export const bookSession = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/sessions/{sessionId}/bookings",
+  summary:
+    "Book a member into a session: a place if one is free, otherwise the waitlist (booking twice returns the same booking)",
+  tag: "classes",
+  params: sessionParams,
+  body: z.object({ memberId: z.uuid() }),
+  response: booking,
+  status: 201,
+});
+
+export const listSessionBookings = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/sessions/{sessionId}/bookings",
+  summary: "Who is booked and waiting for a session, in order",
+  tag: "classes",
+  params: sessionParams,
+  response: z.array(booking.extend({ memberName: z.string() })),
+});
+
+export const cancelBooking = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/bookings/{bookingId}/cancel",
+  summary:
+    "Cancel a booking; the first member waiting gets the place. Inside the cancellation window it counts as late",
+  tag: "classes",
+  params: bookingParams,
+  response: booking,
+});
+
+export const listMySessions = defineRoute({
+  method: "GET",
+  path: "/v1/me/gyms/{orgId}/sessions",
+  summary: "Upcoming sessions at my gym (default the next 7 days) with places left and my booking",
+  tag: "me",
+  params: orgParams,
+  query: z.object({
+    branchId: z.uuid().optional(),
+    from: z.iso.datetime().optional(),
+    to: z.iso.datetime().optional(),
+  }),
+  response: z.array(classSession.extend({ myBooking: booking.nullable() })),
+});
+
+export const bookMySession = defineRoute({
+  method: "POST",
+  path: "/v1/me/gyms/{orgId}/sessions/{sessionId}/bookings",
+  summary: "Book myself into a session, or join its waitlist when it is full",
+  tag: "me",
+  params: mySessionParams,
+  response: booking,
+  status: 201,
+});
+
+export const listMyBookings = defineRoute({
+  method: "GET",
+  path: "/v1/me/gyms/{orgId}/bookings",
+  summary: "My latest 50 bookings with their sessions, newest session first",
+  tag: "me",
+  params: orgParams,
+  response: z.array(booking.extend({ session: classSession })),
+});
+
+export const cancelMyBooking = defineRoute({
+  method: "POST",
+  path: "/v1/me/gyms/{orgId}/bookings/{bookingId}/cancel",
+  summary: "Cancel my booking (late inside the class's cancellation window)",
+  tag: "me",
+  params: bookingParams,
+  response: booking,
+});

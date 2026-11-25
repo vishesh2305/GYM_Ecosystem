@@ -1,6 +1,6 @@
 import type { routes } from "@gym/contracts";
 import { withTenant, type DbHandle, type Tx } from "@gym/db";
-import { and, asc, eq, gte, isNull, lt } from "@gym/db/orm";
+import { and, asc, eq, isNull } from "@gym/db/orm";
 import { branches, classes, classSessions } from "@gym/db/schema";
 import {
   BadRequestException,
@@ -33,16 +33,15 @@ import {
   assertInstructor,
   cancelSessions,
   generateSessions,
+  sessionRange,
+  toSession,
   upcomingSessions,
-  type Session,
+  type SessionOut,
 } from "./timetable";
+import { refillSession, sessionsWithPlaces } from "./bookings";
 
 type GymClass = typeof classes.$inferSelect;
 type ClassOut = z.output<typeof routes.listClasses.response>[number];
-export type SessionOut = z.output<typeof routes.listClassSessions.response>[number];
-
-const DAY = 86_400_000;
-const MAX_RANGE_DAYS = 31;
 
 const toClass = (c: GymClass): ClassOut => ({
   id: c.id,
@@ -61,23 +60,6 @@ const toClass = (c: GymClass): ClassOut => ({
   active: c.active,
 });
 
-export const toSession = (s: Session, places = { booked: 0, waitlisted: 0 }): SessionOut => ({
-  id: s.id,
-  branchId: s.branchId,
-  classId: s.classId,
-  kind: s.kind,
-  name: s.name,
-  room: s.room,
-  instructorId: s.instructorId,
-  startsAt: s.startsAt.toISOString(),
-  endsAt: s.endsAt.toISOString(),
-  capacity: s.capacity,
-  cancelWindowMinutes: s.cancelWindowMinutes,
-  status: s.status,
-  cancelReason: s.cancelReason,
-  ...places,
-});
-
 /** The branch in the URL must exist and be one the caller works at; otherwise it does not exist for them. */
 export async function visibleBranch(tx: Tx, tenant: TenantContext, branchId: string) {
   const [branch] = canUseBranch(tenant, branchId)
@@ -87,15 +69,6 @@ export async function visibleBranch(tx: Tx, tenant: TenantContext, branchId: str
         .where(and(eq(branches.id, branchId), isNull(branches.deletedAt)))
     : [];
   if (!branch) throw new NotFoundException("Branch not found");
-}
-
-/** Sessions starting in [from, to): default the next 7 days, at most MAX_RANGE_DAYS. */
-export function sessionRange(query: { from?: string | undefined; to?: string | undefined }) {
-  const from = query.from ? new Date(query.from) : new Date();
-  const to = query.to ? new Date(query.to) : new Date(from.getTime() + 7 * DAY);
-  if (to <= from || to.getTime() - from.getTime() > MAX_RANGE_DAYS * DAY)
-    throw new BadRequestException(`Ask for a range of up to ${MAX_RANGE_DAYS} days`);
-  return and(gte(classSessions.startsAt, from), lt(classSessions.startsAt, to));
 }
 
 @TenantScoped()
@@ -189,6 +162,7 @@ export class ClassesController {
             .update(classSessions)
             .set(sessionChanges)
             .where(eq(classSessions.id, session.id));
+          if (body.capacity !== undefined) await refillSession(tx, session.id);
         }
       }
       await recordAudit(tx, {
@@ -256,14 +230,17 @@ export class ClassSessionsController {
     query: z.output<typeof routes.listClassSessions.query>,
   ): Promise<SessionOut[]> {
     const range = sessionRange(query);
-    const rows = await withTenant(this.db.db, tenant.tenantId, (tx) =>
-      tx
+    return withTenant(this.db.db, tenant.tenantId, async (tx) => {
+      const rows = await tx
         .select()
         .from(classSessions)
         .where(and(range, query.branchId ? eq(classSessions.branchId, query.branchId) : undefined))
-        .orderBy(asc(classSessions.startsAt)),
-    );
-    return rows.filter((s) => canUseBranch(tenant, s.branchId)).map((s) => toSession(s));
+        .orderBy(asc(classSessions.startsAt));
+      return sessionsWithPlaces(
+        tx,
+        rows.filter((s) => canUseBranch(tenant, s.branchId)),
+      );
+    });
   }
 
   @Post(":sessionId/cancel")
