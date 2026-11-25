@@ -128,6 +128,8 @@ describe("system scope (withSystem) for background jobs", () => {
       });
     await expect(denied("select name from organisations")).rejects.toThrow(/permission denied/);
     await expect(denied("select * from branches")).rejects.toThrow(/permission denied/);
+    await expect(denied("select phone from members")).rejects.toThrow(/permission denied/);
+    await expect(denied("select phone from users")).rejects.toThrow(/permission denied/);
     await expect(denied("update organisations set timezone = 'UTC'")).rejects.toThrow(
       /permission denied/,
     );

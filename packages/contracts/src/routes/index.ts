@@ -1,3 +1,4 @@
+import { listMyGyms } from "./access";
 import {
   confirmTotp,
   disableTotp,
@@ -81,6 +82,7 @@ export const routes = {
   confirmTotp,
   verifyMfa,
   disableTotp,
+  listMyGyms,
   getMe,
   updateMe,
   listConsents,
