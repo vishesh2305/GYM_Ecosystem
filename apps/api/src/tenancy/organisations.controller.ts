@@ -2,7 +2,17 @@ import type { routes } from "@gym/contracts";
 import { withTenant, withUser, type DbHandle } from "@gym/db";
 import { eq } from "@gym/db/orm";
 import { branches, organisations, staffMembers } from "@gym/db/schema";
-import { Body, Controller, Get, Inject, NotFoundException, Patch, Post } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  ConflictException,
+  Controller,
+  Get,
+  Inject,
+  NotFoundException,
+  Patch,
+  Post,
+} from "@nestjs/common";
 import { v7 } from "uuid";
 import type { z } from "zod";
 import { CurrentAuth } from "../auth/auth.guard";
@@ -101,23 +111,43 @@ export class OrganisationController {
     @CurrentTenant() tenant: TenantContext,
     @Body(new ZodPipe(contracts.updateOrganisation.body)) body: Body<"updateOrganisation">,
   ): Promise<OrganisationOut> {
-    return withTenant(this.db.db, tenant.tenantId, async (tx) => {
-      const [org] = await tx
-        .update(organisations)
-        .set(body)
-        .where(eq(organisations.id, tenant.tenantId))
-        .returning();
-      if (!org) throw new NotFoundException("Organisation not found");
-      await recordAudit(tx, {
-        tenantId: tenant.tenantId,
-        actorType: "staff",
-        actorId: tenant.staffId,
-        action: "organisation.updated",
-        entityType: "organisation",
-        entityId: org.id,
-        data: body,
-      });
-      return toOrganisation(org, tenant.role);
-    });
+    return unique(() =>
+      withTenant(this.db.db, tenant.tenantId, async (tx) => {
+        const [current] = await tx
+          .select({ slug: organisations.slug })
+          .from(organisations)
+          .where(eq(organisations.id, tenant.tenantId));
+        if (body.published && !(body.slug ?? current?.slug))
+          throw new BadRequestException("Choose a page address (slug) before publishing");
+        const [org] = await tx
+          .update(organisations)
+          .set(body)
+          .where(eq(organisations.id, tenant.tenantId))
+          .returning();
+        if (!org) throw new NotFoundException("Organisation not found");
+        await recordAudit(tx, {
+          tenantId: tenant.tenantId,
+          actorType: "staff",
+          actorId: tenant.staffId,
+          action: "organisation.updated",
+          entityType: "organisation",
+          entityId: org.id,
+          data: body,
+        });
+        return toOrganisation(org, tenant.role);
+      }),
+    );
+  }
+}
+
+/** A slug another gym already uses is a 409. */
+async function unique<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    const code =
+      (error as { cause?: { code?: string } }).cause?.code ?? (error as { code?: string }).code;
+    if (code === "23505") throw new ConflictException("Another gym already uses this page address");
+    throw error;
   }
 }

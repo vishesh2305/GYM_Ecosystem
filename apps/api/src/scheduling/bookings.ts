@@ -98,7 +98,7 @@ export async function withPositions(tx: Tx, rows: readonly Booking[]): Promise<B
 }
 
 /** Places taken and members waiting per session. */
-async function placesTaken(tx: Tx, sessionIds: readonly string[]) {
+export async function placesTaken(tx: Tx, sessionIds: readonly string[]) {
   const places = new Map<string, { booked: number; waitlisted: number }>();
   if (!sessionIds.length) return places;
   const rows = await tx

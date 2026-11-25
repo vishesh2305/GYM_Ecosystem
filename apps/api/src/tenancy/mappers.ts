@@ -15,6 +15,9 @@ export const toOrganisation = (
   countryCode: org.countryCode,
   currency: org.currency,
   timezone: org.timezone,
+  slug: org.slug,
+  published: org.published,
+  about: org.about,
   createdAt: org.createdAt.toISOString(),
   myRole,
 });

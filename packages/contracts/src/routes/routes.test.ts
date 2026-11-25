@@ -19,6 +19,19 @@ describe("the real API contract", () => {
 });
 
 describe("validation rules shared by the apps and the server", () => {
+  it("a lead needs a phone number or an email so someone can follow up", () => {
+    const lead = {
+      name: "Rohan",
+      branchId: "01930000-0000-7000-8000-0000000000ff",
+      source: "walk_in",
+    };
+    expect(routes.createLead.body.safeParse(lead).success).toBe(false);
+    expect(routes.createLead.body.safeParse({ ...lead, phone: "9876543210" }).success).toBe(true);
+    expect(routes.createLead.body.safeParse({ ...lead, email: "r@example.com" }).success).toBe(
+      true,
+    );
+  });
+
   const plan = { name: "Monthly", durationUnit: "month", durationCount: 1, pricePaise: 150_000 };
 
   it("a plan lasts at most 36 months but may be counted in days", () => {

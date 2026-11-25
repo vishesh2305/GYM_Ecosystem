@@ -35,6 +35,10 @@ export const organisation = z.object({
   countryCode: z.string(),
   currency: z.string(),
   timezone: z.string(),
+  /** Address of the public gym page. */
+  slug: z.string().nullable(),
+  published: z.boolean(),
+  about: z.string().nullable(),
   createdAt: z.iso.datetime(),
   myRole: staffRole,
 });
@@ -88,11 +92,23 @@ export const getOrganisation = defineRoute({
 export const updateOrganisation = defineRoute({
   method: "PATCH",
   path: "/v1/orgs/{orgId}",
-  summary: "Change the business name, GSTIN or time zone (owner only)",
+  summary:
+    "Change the business name, GSTIN, time zone or public page (slug, about, published) (owner only)",
   tag: "organisations",
   params: orgParams,
   body: z
-    .object({ name: z.string().trim().min(2).max(120), gstin: gstin.nullable(), timezone })
+    .object({
+      name: z.string().trim().min(2).max(120),
+      gstin: gstin.nullable(),
+      timezone,
+      slug: z
+        .string()
+        .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "use lower-case letters, digits and single hyphens")
+        .min(3)
+        .max(40),
+      about: z.string().trim().max(1000).nullable(),
+      published: z.boolean(),
+    })
     .partial(),
   response: organisation,
 });

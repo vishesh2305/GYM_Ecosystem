@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { id, softDelete, timestamps } from "../columns";
 import { users } from "./identity";
@@ -12,6 +12,12 @@ export const organisations = pgTable("organisations", {
   countryCode: text("country_code").notNull().default("IN"),
   currency: text("currency").notNull().default("INR"),
   timezone: text("timezone").notNull().default("Asia/Kolkata"),
+  /** Address of the public gym page (/gyms/<slug>), unique across gyms. */
+  slug: text("slug").unique(),
+  /** The public page and enquiry form are live only when the owner publishes them. */
+  published: boolean("published").notNull().default(false),
+  /** A short introduction shown on the public page. */
+  about: text("about"),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   ...timestamps,
   ...softDelete,

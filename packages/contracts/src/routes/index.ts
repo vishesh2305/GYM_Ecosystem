@@ -99,6 +99,7 @@ import {
   updateMyNotificationPreferences,
 } from "./notifications";
 import { attendanceReport, duesReport, retentionReport, revenueReport } from "./reports";
+import { createEnquiry, getPublicGym, getPublicSchedule } from "./public";
 import { health, ready } from "./system";
 import {
   listExercises,
@@ -239,4 +240,7 @@ export const routes = {
   duesReport,
   attendanceReport,
   retentionReport,
+  getPublicGym,
+  getPublicSchedule,
+  createEnquiry,
 };
