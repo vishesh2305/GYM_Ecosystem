@@ -4,6 +4,8 @@ import { eq } from "@gym/db/orm";
 import {
   branches,
   checkIns,
+  classes,
+  classSessions,
   kiosks,
   members,
   memberships,
@@ -30,6 +32,15 @@ const SAMPLE_BODIES: Record<string, object> = {
   createBranch: { name: "Intruder branch", city: "Pune" },
   createKiosk: { name: "Intruder kiosk" },
   deskCheckIn: { memberId: "00000000-0000-7000-8000-000000000000" },
+  createClass: {
+    name: "Intruder class",
+    capacity: 5,
+    durationMinutes: 60,
+    weekdays: [1],
+    startTime: "07:00",
+  },
+  updateClass: { name: "Renamed by intruder" },
+  cancelClassSession: { reason: "Intruder" },
   updateBranch: { name: "Renamed by intruder" },
   inviteStaff: { channel: "sms", phone: "+919000000001", role: "trainer" },
   updateStaff: { role: "trainer" },
@@ -73,6 +84,8 @@ async function snapshot() {
     memberships: await tx.select().from(memberships),
     kiosks: await tx.select().from(kiosks),
     checkIns: await tx.select().from(checkIns),
+    classes: await tx.select().from(classes),
+    sessions: await tx.select().from(classSessions),
   }));
 }
 
@@ -201,6 +214,28 @@ beforeAll(async () => {
     })
   ).json();
   victim.checkInId = visit.visit?.id ?? "";
+  victim.classId = (
+    await api.inject({
+      method: "POST",
+      url: `${base}/branches/${victim.branchId}/classes`,
+      headers: victimOwner.headers,
+      payload: {
+        name: "Victim yoga",
+        capacity: 10,
+        durationMinutes: 60,
+        weekdays: [0, 1, 2, 3, 4, 5, 6],
+        startTime: "23:30",
+      },
+    })
+  ).json().id;
+  const [victimSession] = await withTenant(dbh.db, victim.orgId ?? "", (tx) =>
+    tx
+      .select()
+      .from(classSessions)
+      .where(eq(classSessions.classId, victim.classId ?? "")),
+  );
+  victim.sessionId = victimSession?.id ?? "";
+  expect(victim.sessionId).not.toBe("");
   expect(victim.checkInId).not.toBe("");
 
   const attacker = await signedInStaff(api, dbh.db, { name: "Attacker owner" });

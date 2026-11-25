@@ -51,10 +51,15 @@ export const toMembership = (m: typeof memberships.$inferSelect): MembershipOut 
   createdAt: m.createdAt.toISOString(),
 });
 
+/** The organisation's time zone (inside its tenant scope). */
+export async function orgTimezone(tx: Tx): Promise<string> {
+  const [org] = await tx.select({ timezone: organisations.timezone }).from(organisations);
+  return org?.timezone ?? "Asia/Kolkata";
+}
+
 /** Today's date in the organisation's own time zone. */
 export async function orgToday(tx: Tx): Promise<string> {
-  const [org] = await tx.select({ timezone: organisations.timezone }).from(organisations);
-  return todayIn(org?.timezone ?? "Asia/Kolkata");
+  return todayIn(await orgTimezone(tx));
 }
 
 /**

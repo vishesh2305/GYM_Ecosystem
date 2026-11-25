@@ -62,6 +62,14 @@ import {
   updateMember,
   updatePlan,
 } from "./membership";
+import {
+  archiveClass,
+  cancelClassSession,
+  createClass,
+  listClasses,
+  listClassSessions,
+  updateClass,
+} from "./scheduling";
 import { health, ready } from "./system";
 import {
   acceptInvite,
@@ -111,6 +119,12 @@ export const routes = {
   listMyCheckIns,
   getOccupancy,
   getMyGymOccupancy,
+  createClass,
+  listClasses,
+  updateClass,
+  archiveClass,
+  listClassSessions,
+  cancelClassSession,
   getMe,
   updateMe,
   listConsents,

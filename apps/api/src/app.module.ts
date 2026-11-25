@@ -9,6 +9,7 @@ import { HealthController } from "./health/health.controller";
 import { InfraModule } from "./infra.module";
 import { MembershipModule } from "./membership/membership.module";
 import { PlatformModule } from "./platform/platform.module";
+import { SchedulingModule } from "./scheduling/scheduling.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
 
 @Module({})
@@ -24,6 +25,7 @@ export class AppModule {
         MembershipModule,
         BillingModule,
         AccessModule,
+        SchedulingModule,
         ...modules,
       ],
       controllers: [HealthController, DocsController],

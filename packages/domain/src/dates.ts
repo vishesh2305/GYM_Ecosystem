@@ -46,3 +46,39 @@ export function todayIn(timeZone: string, now: Date = new Date()): string {
     day: "2-digit",
   }).format(now);
 }
+
+/** 0 = Sunday … 6 = Saturday. */
+export const weekdayOf = (date: string): number => new Date(toUtc(date)).getUTCDay();
+
+/** How far `timeZone` is ahead of UTC at instant `ms`, in ms. */
+function zoneOffset(ms: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(ms));
+  const n = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  const asUtc = Date.UTC(n("year"), n("month") - 1, n("day"), n("hour"), n("minute"), n("second"));
+  return asUtc - (ms - (ms % 1000));
+}
+
+/**
+ * The instant a wall-clock time ("HH:MM") on `date` happens in `timeZone`, e.g. 07:00 on 2026-12-01 in
+ * Asia/Kolkata is 01:30Z. A time skipped by a daylight-saving change resolves to the hour after.
+ */
+export function zonedTime(date: string, time: string, timeZone: string): Date {
+  const [h, m] = time.split(":").map(Number);
+  if (!/^\d{2}:\d{2}$/.test(time) || h === undefined || m === undefined || h > 23 || m > 59)
+    throw new RangeError(`not a time of day: ${time}`);
+  const wall = toUtc(date) + (h * 60 + m) * 60_000;
+  const early = wall - zoneOffset(wall, timeZone);
+  const candidates = [early, wall - zoneOffset(early, timeZone)].sort((a, b) => a - b);
+  // A time that happens twice (clocks go back) takes the first; one that never happens takes the later instant.
+  const real = candidates.find((c) => c + zoneOffset(c, timeZone) === wall);
+  return new Date(real ?? Math.max(...candidates));
+}
