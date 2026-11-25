@@ -80,6 +80,7 @@ import {
   listClassSessions,
   updateClass,
 } from "./scheduling";
+import { listMemberNotifications, registerDevice, removeDevice } from "./notifications";
 import { health, ready } from "./system";
 import {
   listExercises,
@@ -157,6 +158,9 @@ export const routes = {
   listMyWorkouts,
   listMyRecords,
   listMyBodyMetrics,
+  registerDevice,
+  removeDevice,
+  listMemberNotifications,
   getMe,
   updateMe,
   listConsents,

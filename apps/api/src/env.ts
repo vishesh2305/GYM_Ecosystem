@@ -68,8 +68,32 @@ export const apiEnvSchema = baseEnvSchema
     OTP_MAX_PER_WINDOW: z.coerce.number().int().positive().default(3),
     OTP_WINDOW_SECONDS: z.coerce.number().int().positive().default(900),
     DEFAULT_PHONE_REGION: z.string().length(2).default("IN"),
-    /** "console" prints codes to the log: development and tests only. Real providers arrive in step A14. */
-    SMS_PROVIDER: z.enum(["console"]).default("console"),
+    /** "console" prints SMS to the log (development/tests); "msg91" sends DLT templates through MSG91. */
+    SMS_PROVIDER: z.enum(["console", "msg91"]).default("console"),
+    MSG91_AUTH_KEY: z.string().optional(),
+    MSG91_FLOW_URL: z.url().default("https://control.msg91.com/api/v5/flow"),
+    /** JSON object: message key (otp, staff_invite, renewal_due, …) → MSG91 template id (DLT-approved). */
+    MSG91_TEMPLATE_IDS: z
+      .string()
+      .default("{}")
+      .transform((value) => JSON.parse(value) as unknown)
+      .pipe(z.record(z.string(), z.string())),
+    /** "console" logs push notifications (development/tests); "expo" sends through Expo (FCM and APNs). */
+    PUSH_PROVIDER: z.enum(["console", "expo"]).default("console"),
+    EXPO_PUSH_URL: z.url().default("https://exp.host/--/api/v2/push/send"),
+    /** Only needed when "enhanced push security" is on in the Expo project. */
+    EXPO_ACCESS_TOKEN: z.string().optional(),
+    /** "cloud" sends approved templates through the WhatsApp Business Cloud API; "off" never uses WhatsApp. */
+    WHATSAPP_PROVIDER: z.enum(["console", "cloud", "off"]).default("console"),
+    WHATSAPP_API_URL: z.url().default("https://graph.facebook.com/v21.0"),
+    WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+    WHATSAPP_TOKEN: z.string().optional(),
+    /** How often the worker sends due member messages, and how many per gym each time (a per-gym throttle). */
+    NOTIFY_POLL_MS: z.coerce.number().int().min(1000).default(30_000),
+    NOTIFY_PER_GYM_PER_RUN: z.coerce.number().int().min(1).max(10_000).default(100),
+    /** A message that fails on every channel is retried this many times, this many minutes apart. */
+    NOTIFY_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
+    NOTIFY_RETRY_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
     /** "console" prints emails to the log (development/tests); "smtp" sends through SMTP_URL. */
     EMAIL_PROVIDER: z.enum(["console", "smtp"]).default("console"),
     SMTP_URL: z.url({ protocol: /^smtps?$/ }).optional(),
@@ -105,6 +129,31 @@ export const apiEnvSchema = baseEnvSchema
         code: "custom",
         path: ["SMS_PROVIDER"],
         message: "the console sender cannot be used in production",
+      });
+    }
+    for (const key of ["PUSH_PROVIDER", "WHATSAPP_PROVIDER"] as const) {
+      if (env.NODE_ENV === "production" && env[key] === "console")
+        ctx.addIssue({
+          code: "custom",
+          path: [key],
+          message: "the console sender cannot be used in production",
+        });
+    }
+    if (env.SMS_PROVIDER === "msg91" && !env.MSG91_AUTH_KEY) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["MSG91_AUTH_KEY"],
+        message: "required when SMS_PROVIDER is msg91",
+      });
+    }
+    if (
+      env.WHATSAPP_PROVIDER === "cloud" &&
+      (!env.WHATSAPP_PHONE_NUMBER_ID || !env.WHATSAPP_TOKEN)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["WHATSAPP_TOKEN"],
+        message: "WhatsApp phone number id and token are required when WHATSAPP_PROVIDER is cloud",
       });
     }
     if (env.NODE_ENV === "production" && env.EMAIL_PROVIDER === "console") {

@@ -8,6 +8,7 @@ import type { ApiEnv } from "./env";
 import { HealthController } from "./health/health.controller";
 import { InfraModule } from "./infra.module";
 import { MembershipModule } from "./membership/membership.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 import { PlatformModule } from "./platform/platform.module";
 import { SchedulingModule } from "./scheduling/scheduling.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
@@ -28,6 +29,7 @@ export class AppModule {
         AccessModule,
         SchedulingModule,
         TrainingModule,
+        NotificationsModule,
         ...modules,
       ],
       controllers: [HealthController, DocsController],

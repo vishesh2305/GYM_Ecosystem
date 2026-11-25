@@ -106,11 +106,17 @@ export class StaffService {
       return { invite: row, orgName: org?.name ?? "a gym" };
     });
 
+    const link = `${this.env.APP_URL}/invite/${token}`;
     const text =
       `You have been invited to join ${orgName} as ${ROLE_NAMES[body.role]} on Gym Platform. ` +
-      `Accept within ${INVITE_DAYS} days: ${this.env.APP_URL}/invite/${token}`;
+      `Accept within ${INVITE_DAYS} days: ${link}`;
     try {
-      if (body.channel === "sms") await this.sms.send(destination, text);
+      if (body.channel === "sms")
+        await this.sms.send(destination, {
+          text,
+          template: "staff_invite",
+          params: [orgName, ROLE_NAMES[body.role], String(INVITE_DAYS), link],
+        });
       else
         await this.email.send({
           to: destination,

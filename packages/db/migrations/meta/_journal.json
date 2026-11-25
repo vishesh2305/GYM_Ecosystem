@@ -400,6 +400,20 @@
       "when": 1795611245628,
       "tag": "0056_body_metrics_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1795611826487,
+      "tag": "0057_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1795611826826,
+      "tag": "0058_notifications_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -6,7 +6,7 @@ describe("development senders", () => {
     const sms = new ConsoleSmsSender();
     const mail = new ConsoleEmailSender();
     for (let i = 0; i < 105; i++) {
-      await sms.send("+910000000000", `message ${i}`);
+      await sms.send("+910000000000", { text: `message ${i}`, template: "otp", params: [] });
       await mail.send({ to: "a@b.co", subject: `s${i}`, text: "t" });
     }
     expect(sms.sent).toHaveLength(100);

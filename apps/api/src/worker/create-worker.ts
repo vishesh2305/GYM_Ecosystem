@@ -12,6 +12,9 @@ import { runAttendance } from "../scheduling/attendance";
 import { runSessionGeneration } from "../scheduling/timetable";
 import { runMembershipLifecycle } from "../membership/lifecycle";
 import { runMaintenance } from "../platform/maintenance";
+import { createEmailSender, createSmsSender } from "../auth/senders";
+import { createChannels, type ChannelAdapter } from "../notifications/channels";
+import { runNotificationDelivery } from "../notifications/delivery";
 import { EVENTS_QUEUE, EventDispatcher } from "./event-dispatcher";
 import { handlers } from "./handlers";
 import { OutboxRelay } from "./outbox-relay";
@@ -24,14 +27,16 @@ export interface WorkerOptions {
   extraHandlers?: readonly EventHandler[];
   /** Start relaying and processing immediately (tests drive these by hand). */
   autostart?: boolean;
+  /** Message channels instead of the configured providers (tests pass fakes). */
+  channels?: readonly ChannelAdapter[];
 }
 
 export type WorkerHandle = Awaited<ReturnType<typeof createWorker>>;
 
-/** Background process: outbox relay, event handlers, hourly maintenance, membership upkeep, AutoPay renewals, auto check-out, class sessions and attendance. */
+/** Background process: outbox relay, event handlers, member messages, hourly maintenance, membership upkeep, AutoPay renewals, auto check-out, class sessions and attendance. */
 export async function createWorker(
   env: ApiEnv,
-  { extraHandlers = [], autostart = true }: WorkerOptions = {},
+  { extraHandlers = [], autostart = true, channels }: WorkerOptions = {},
 ) {
   const logger = pino({ level: env.LOG_LEVEL, base: { process: "worker" } });
   const db = createDb(env.DATABASE_URL, env.DB_POOL_MAX);
@@ -58,11 +63,23 @@ export async function createWorker(
   );
 
   const gateway = createGateway(env);
+  const messageChannels =
+    channels ?? createChannels(env, createSmsSender(env), createEmailSender(env));
+  const deliveryOptions = {
+    perGym: env.NOTIFY_PER_GYM_PER_RUN,
+    maxAttempts: env.NOTIFY_MAX_ATTEMPTS,
+    retryMs: env.NOTIFY_RETRY_MINUTES * 60_000,
+  };
   const maintenanceQueue = new Queue(MAINTENANCE_QUEUE, { connection, prefix: env.QUEUE_PREFIX });
   await maintenanceQueue.upsertJobScheduler(
     "maintenance-hourly",
     { every: HOUR },
     { name: "maintenance" },
+  );
+  await maintenanceQueue.upsertJobScheduler(
+    "notifications",
+    { every: env.NOTIFY_POLL_MS },
+    { name: "notifications" },
   );
   await maintenanceQueue.upsertJobScheduler(
     "payment-reminders-hourly",
@@ -98,19 +115,21 @@ export async function createWorker(
     MAINTENANCE_QUEUE,
     async (job) => {
       const result =
-        job.name === "membership-lifecycle"
-          ? await runMembershipLifecycle(db.db)
-          : job.name === "class-attendance"
-            ? await runAttendance(db.db)
-            : job.name === "class-sessions"
-              ? await runSessionGeneration(db.db)
-              : job.name === "auto-check-out"
-                ? await runAutoCheckOut(db.db, env.CHECKIN_AUTO_OUT_HOURS)
-                : job.name === "autopay-renewals"
-                  ? await runAutopayRenewals(db.db, gateway)
-                  : job.name === "payment-reminders"
-                    ? await runPaymentReminders(db.db, env.DUNNING_GRACE_DAYS)
-                    : await runMaintenance(db.db);
+        job.name === "notifications"
+          ? await runNotificationDelivery(db.db, messageChannels, deliveryOptions)
+          : job.name === "membership-lifecycle"
+            ? await runMembershipLifecycle(db.db)
+            : job.name === "class-attendance"
+              ? await runAttendance(db.db)
+              : job.name === "class-sessions"
+                ? await runSessionGeneration(db.db)
+                : job.name === "auto-check-out"
+                  ? await runAutoCheckOut(db.db, env.CHECKIN_AUTO_OUT_HOURS)
+                  : job.name === "autopay-renewals"
+                    ? await runAutopayRenewals(db.db, gateway)
+                    : job.name === "payment-reminders"
+                      ? await runPaymentReminders(db.db, env.DUNNING_GRACE_DAYS)
+                      : await runMaintenance(db.db);
       logger.info({ job: job.name, ...result }, "scheduled job done");
     },
     { connection, prefix: env.QUEUE_PREFIX, autorun: false },

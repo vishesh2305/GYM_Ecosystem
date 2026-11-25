@@ -67,7 +67,12 @@ export class OtpService {
     const minutes = Math.max(1, Math.round(this.env.OTP_TTL_SECONDS / 60));
     const text = `${code} is your Gym Platform sign-in code. It expires in ${minutes} minutes. Never share it.`;
     try {
-      if (input.channel === "sms") await this.sms.send(destination, text);
+      if (input.channel === "sms")
+        await this.sms.send(destination, {
+          text,
+          template: "otp",
+          params: [code, String(minutes)],
+        });
       else
         await this.email.send({ to: destination, subject: "Your Gym Platform sign-in code", text });
     } catch {
