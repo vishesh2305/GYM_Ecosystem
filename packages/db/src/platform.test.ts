@@ -83,3 +83,44 @@ describe("feature_flags", () => {
     );
   });
 });
+
+describe("Supabase Data API", () => {
+  it("anon and authenticated get no access to any table, including tables made later", async () => {
+    const rollback = new Error("rollback");
+    const can = async (tx: Parameters<Parameters<typeof handle.db.transaction>[0]>[0], q: string) =>
+      (await tx.execute<{ ok: boolean }>(sql.raw(`select ${q} as ok`))).rows[0]?.ok;
+    await handle.db
+      .transaction(async (tx) => {
+        // What a Supabase project starts with (roles are created only if this cluster lacks them).
+        await tx.execute(
+          sql.raw(`DO $$ BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+          END $$`),
+        );
+        await tx.execute(
+          sql.raw("GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated"),
+        );
+        await tx.execute(sql.raw("GRANT USAGE ON SCHEMA app TO anon"));
+        await tx.execute(
+          sql.raw(
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated",
+          ),
+        );
+        expect(await can(tx, "has_table_privilege('anon', 'members', 'SELECT')")).toBe(true);
+
+        await tx.execute(sql.raw("SELECT app.close_data_api()"));
+        for (const role of ["anon", "authenticated"]) {
+          expect(await can(tx, `has_table_privilege('${role}', 'members', 'SELECT')`)).toBe(false);
+          expect(await can(tx, `has_table_privilege('${role}', 'users', 'UPDATE')`)).toBe(false);
+        }
+        expect(await can(tx, "has_schema_privilege('anon', 'app', 'USAGE')")).toBe(false);
+        await tx.execute(sql.raw("CREATE TABLE public.later_table (id int)"));
+        expect(await can(tx, "has_table_privilege('anon', 'later_table', 'SELECT')")).toBe(false);
+        throw rollback;
+      })
+      .catch((error: unknown) => {
+        if (error !== rollback) throw error;
+      });
+  });
+});

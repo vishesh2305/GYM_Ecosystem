@@ -512,6 +512,13 @@
       "when": 1795617019275,
       "tag": "0072_support_grants_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1795629829700,
+      "tag": "0073_close_data_api",
+      "breakpoints": true
     }
   ]
 }
