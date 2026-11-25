@@ -4,3 +4,4 @@ export * from "./platform";
 export * from "./tenancy";
 export * from "./membership";
 export * from "./billing";
+export * from "./access";

@@ -11,3 +11,22 @@ export const listMyGyms = defineRoute({
     z.object({ orgId: z.uuid(), orgName: z.string(), memberId: z.uuid(), memberName: z.string() }),
   ),
 });
+
+const myGymParams = z.object({ orgId: z.uuid() });
+
+export const getMyPass = defineRoute({
+  method: "GET",
+  path: "/v1/me/gyms/{orgId}/pass",
+  summary:
+    "My gym pass: the app shows qrPrefix + the current TOTP code as a QR code, which changes every period seconds and works offline",
+  tag: "me",
+  params: myGymParams,
+  response: z.object({
+    memberId: z.uuid(),
+    secret: z.string(),
+    algorithm: z.literal("SHA1"),
+    digits: z.literal(8),
+    period: z.literal(30),
+    qrPrefix: z.string(),
+  }),
+});
