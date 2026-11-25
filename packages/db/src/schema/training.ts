@@ -1,4 +1,4 @@
-import { EXERCISE_TRACKING, SET_KINDS, type RecordKind } from "@gym/domain";
+import { BODY_METRICS, EXERCISE_TRACKING, SET_KINDS, type RecordKind } from "@gym/domain";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -144,5 +144,24 @@ export const personalRecords = pgTable(
   },
   (t) => [
     uniqueIndex("personal_records_user_exercise_kind_key").on(t.userId, t.exerciseId, t.kind),
+  ],
+);
+
+/** One body measurement (weight, body fat, a tape measurement, resting heart rate) at a moment in time. */
+export const bodyMetrics = pgTable(
+  "body_metrics",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: BODY_METRICS }).notNull(),
+    value: doublePrecision("value").notNull(),
+    measuredAt: timestamp("measured_at", tz).notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    index("body_metrics_user_kind_idx").on(t.userId, t.kind, t.measuredAt),
+    check("body_metrics_value_positive", sql`${t.value} > 0`),
   ],
 );

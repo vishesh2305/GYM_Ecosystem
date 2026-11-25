@@ -490,3 +490,53 @@ describe("personal records", () => {
     expect(await records(other.headers)).toEqual({});
   });
 });
+
+describe("body measurements", () => {
+  it("are logged offline, synced, and visible only to their owner", async () => {
+    const me = await signedInUser(api, dbh.db);
+    const other = await signedInUser(api, dbh.db);
+    const phone = new OfflinePhone(me.headers);
+    const measure = (kind: string, value: number, measuredAt: string) =>
+      phone.record({
+        op: "PUT",
+        type: "body_metrics",
+        id: v7(),
+        data: { kind, value, measured_at: measuredAt },
+      });
+    measure("weight_kg", 74.2, "2026-11-01T06:30:00+05:30");
+    const latest = measure("weight_kg", 73.6, "2026-11-08T06:30:00+05:30");
+    measure("waist_cm", 84, "2026-11-08T06:35:00+05:30");
+    phone.record({ op: "PATCH", type: "body_metrics", id: latest, data: { value: 73.5 } });
+    expect(await phone.sync()).toMatchObject({ applied: 4, skipped: 0 });
+
+    const res = await api.inject({
+      method: "GET",
+      url: "/v1/me/body-metrics?kind=weight_kg",
+      headers: me.headers,
+    });
+    expect(res.json()).toEqual([
+      expect.objectContaining({ id: latest, value: 73.5, measuredAt: "2026-11-08T01:00:00.000Z" }),
+      expect.objectContaining({ value: 74.2 }),
+    ]);
+    const theirs = await api.inject({
+      method: "GET",
+      url: "/v1/me/body-metrics",
+      headers: other.headers,
+    });
+    expect(theirs.json()).toEqual([]);
+
+    const nonsense = await upload(me.headers, [
+      {
+        op: "PUT",
+        type: "body_metrics",
+        id: v7(),
+        data: { kind: "iq", value: 140, measured_at: new Date().toISOString() },
+      },
+    ]);
+    expect(nonsense.statusCode).toBe(400);
+    const negative = await upload(me.headers, [
+      { op: "PATCH", type: "body_metrics", id: latest, data: { value: -1 } },
+    ]);
+    expect(negative.statusCode).toBe(400);
+  });
+});

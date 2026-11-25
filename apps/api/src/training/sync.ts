@@ -1,8 +1,8 @@
 import type { routes } from "@gym/contracts";
 import { withUser, type DbHandle, type Tx } from "@gym/db";
 import { eq } from "@gym/db/orm";
-import { exercises, workouts, workoutSets, workoutTemplates } from "@gym/db/schema";
-import { EQUIPMENT, EXERCISE_TRACKING, MUSCLES, SET_KINDS } from "@gym/domain";
+import { bodyMetrics, exercises, workouts, workoutSets, workoutTemplates } from "@gym/db/schema";
+import { BODY_METRICS, EQUIPMENT, EXERCISE_TRACKING, MUSCLES, SET_KINDS } from "@gym/domain";
 import {
   BadRequestException,
   Body,
@@ -97,6 +97,14 @@ const WRITABLE = {
     table: workoutTemplates,
     columns: z.object({ name, notes, exercises: templateExercises }),
   },
+  body_metrics: {
+    table: bodyMetrics,
+    columns: z.object({
+      kind: z.enum(BODY_METRICS),
+      value: z.number().positive().max(1000),
+      measured_at: iso,
+    }),
+  },
 } as const;
 
 type Spec = (typeof WRITABLE)[keyof typeof WRITABLE];
@@ -174,7 +182,7 @@ async function applyOperation(
   if (!spec)
     throw new BadRequestException(`Operation ${index}: ${op.type} cannot be changed from the app`);
   for (const id of await exercisesBefore(tx, op)) touched.add(id);
-  // One generic code path for all four tables; each has id, user_id and updated_at.
+  // One generic code path for every table; each has id, user_id and updated_at.
   const table = spec.table as typeof workouts;
   const now = new Date();
 

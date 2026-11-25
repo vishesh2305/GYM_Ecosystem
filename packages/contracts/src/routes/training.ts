@@ -29,7 +29,7 @@ export const listExercises = defineRoute({
 
 export const syncOperation = z.object({
   op: z.enum(["PUT", "PATCH", "DELETE"]),
-  /** The table: exercises, workouts, workout_sets or workout_templates. */
+  /** The table: exercises, workouts, workout_sets, workout_templates or body_metrics. */
   type: z.string().max(40),
   id: z.uuid(),
   /** Column values in the phone's column names (snake_case). PUT sends the whole row, PATCH the changes. */
@@ -105,6 +105,33 @@ export const listMyRecords = defineRoute({
       value: z.number(),
       setId: z.uuid(),
       achievedAt: z.iso.datetime(),
+    }),
+  ),
+});
+
+const bodyMetricKind = z.enum([
+  "weight_kg",
+  "body_fat_pct",
+  "waist_cm",
+  "chest_cm",
+  "hips_cm",
+  "arm_cm",
+  "thigh_cm",
+  "resting_heart_rate_bpm",
+]);
+
+export const listMyBodyMetrics = defineRoute({
+  method: "GET",
+  path: "/v1/me/body-metrics",
+  summary: "My body measurements, newest first (the app logs them offline through sync)",
+  tag: "training",
+  query: z.object({ kind: bodyMetricKind.optional() }),
+  response: z.array(
+    z.object({
+      id: z.uuid(),
+      kind: bodyMetricKind,
+      value: z.number(),
+      measuredAt: z.iso.datetime(),
     }),
   ),
 });

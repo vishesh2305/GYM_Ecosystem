@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, inject } from "vitest";
 import { parse } from "yaml";
 import { createDb, type DbHandle } from "./client";
 import {
+  bodyMetrics,
   exercises,
   personalRecords,
   users,
@@ -90,6 +91,9 @@ async function personWithTraining(name: string) {
     achievedAt: new Date(),
   });
   await handle.db.insert(workoutTemplates).values({ userId: user.id, name: `${name}'s plan` });
+  await handle.db
+    .insert(bodyMetrics)
+    .values({ userId: user.id, kind: "weight_kg", value: 72.4, measuredAt: new Date() });
   return user.id;
 }
 

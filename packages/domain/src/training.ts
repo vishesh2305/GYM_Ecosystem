@@ -124,3 +124,16 @@ export function personalBests(
   }
   return best;
 }
+
+/** Body measurements a member can track over time; the suffix is the unit. */
+export const BODY_METRICS = [
+  "weight_kg",
+  "body_fat_pct",
+  "waist_cm",
+  "chest_cm",
+  "hips_cm",
+  "arm_cm",
+  "thigh_cm",
+  "resting_heart_rate_bpm",
+] as const;
+export type BodyMetric = (typeof BODY_METRICS)[number];
