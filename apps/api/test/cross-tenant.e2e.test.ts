@@ -8,6 +8,8 @@ import {
   classes,
   classSessions,
   kiosks,
+  leads,
+  leadTasks,
   members,
   memberships,
   organisations,
@@ -51,6 +53,15 @@ const SAMPLE_BODIES: Record<string, object> = {
     durationMinutes: 60,
   },
   updateMyNotificationPreferences: { locale: "hi" },
+  createLead: {
+    name: "Intruder lead",
+    phone: "+919000000003",
+    branchId: "01930000-0000-7000-8000-0000000000ff",
+    source: "walk_in",
+  },
+  updateLead: { stage: "lost", lostReason: "Intruder" },
+  bookLeadTrial: { startsAt: "2099-01-01T05:00:00.000Z" },
+  createLeadTask: { title: "Intruder task", dueAt: "2099-01-01T05:00:00.000Z" },
   updateBranch: { name: "Renamed by intruder" },
   inviteStaff: { channel: "sms", phone: "+919000000001", role: "trainer" },
   updateStaff: { role: "trainer" },
@@ -97,6 +108,8 @@ async function snapshot() {
     classes: await tx.select().from(classes),
     sessions: await tx.select().from(classSessions),
     bookings: await tx.select().from(bookings),
+    leads: await tx.select().from(leads),
+    leadTasks: await tx.select().from(leadTasks),
   }));
 }
 
@@ -256,6 +269,27 @@ beforeAll(async () => {
     })
   ).json().id;
   expect(victim.bookingId).toBeTruthy();
+  const victimLead = await api.inject({
+    method: "POST",
+    url: `${base}/leads`,
+    headers: victimOwner.headers,
+    payload: {
+      name: "Victim lead",
+      phone: "+919000000004",
+      branchId: victim.branchId,
+      source: "phone",
+    },
+  });
+  victim.leadId = victimLead.json().id;
+  victim.taskId = (
+    await api.inject({
+      method: "POST",
+      url: `${base}/leads/${victim.leadId}/tasks`,
+      headers: victimOwner.headers,
+      payload: { title: "Call back", dueAt: "2099-01-01T05:00:00.000Z" },
+    })
+  ).json().id;
+  expect(victim.taskId).toBeTruthy();
   expect(victim.checkInId).not.toBe("");
 
   const attacker = await signedInStaff(api, dbh.db, { name: "Attacker owner" });
@@ -315,5 +349,7 @@ describe("cross-tenant isolation matrix", () => {
     expect(after.plans.map((p) => [p.name, p.pricePaise])).toEqual([["Victim plan", 150_000]]);
     expect(after.members.map((m) => m.name)).toEqual(["Victim member"]);
     expect(after.memberships.map((m) => m.status)).toEqual(["active"]);
+    expect(after.leads.map((l) => [l.name, l.stage])).toEqual([["Victim lead", "new"]]);
+    expect(after.leadTasks.map((t) => [t.title, t.doneAt])).toEqual([["Call back", null]]);
   });
 });

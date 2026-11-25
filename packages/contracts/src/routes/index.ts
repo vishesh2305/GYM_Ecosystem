@@ -45,6 +45,17 @@ import {
   cancelAutopay,
 } from "./billing";
 import { listConsents, recordConsent } from "./consents";
+import {
+  bookLeadTrial,
+  completeLeadTask,
+  convertLead,
+  createLead,
+  createLeadTask,
+  getLead,
+  listLeads,
+  listLeadTasks,
+  updateLead,
+} from "./crm";
 import { getMe, updateMe } from "./me";
 import {
   createMemberImport,
@@ -214,4 +225,13 @@ export const routes = {
   razorpayWebhook,
   refundPayment,
   getInvoicePdf,
+  createLead,
+  listLeads,
+  getLead,
+  updateLead,
+  bookLeadTrial,
+  convertLead,
+  createLeadTask,
+  listLeadTasks,
+  completeLeadTask,
 };

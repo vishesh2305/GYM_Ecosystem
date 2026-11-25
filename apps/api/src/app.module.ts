@@ -6,6 +6,7 @@ import { BillingModule } from "./billing/billing.module";
 import { DocsController } from "./docs.controller";
 import type { ApiEnv } from "./env";
 import { HealthController } from "./health/health.controller";
+import { CrmModule } from "./crm/crm.module";
 import { InfraModule } from "./infra.module";
 import { MembershipModule } from "./membership/membership.module";
 import { NotificationsModule } from "./notifications/notifications.module";
@@ -30,6 +31,7 @@ export class AppModule {
         SchedulingModule,
         TrainingModule,
         NotificationsModule,
+        CrmModule,
         ...modules,
       ],
       controllers: [HealthController, DocsController],

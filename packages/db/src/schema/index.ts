@@ -8,3 +8,4 @@ export * from "./access";
 export * from "./scheduling";
 export * from "./training";
 export * from "./notifications";
+export * from "./crm";
