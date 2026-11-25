@@ -9,7 +9,7 @@ import {
 } from "@nestjs/common";
 import { Redis } from "ioredis";
 import type { ApiEnv } from "./env";
-import { DB, ENV, REDIS } from "./tokens";
+import { DB, ENV, READ_DB, REDIS } from "./tokens";
 
 export function createRedis(url: string): Redis {
   const redis = new Redis(url, {
@@ -26,12 +26,14 @@ export function createRedis(url: string): Redis {
 class InfraShutdown implements OnApplicationShutdown {
   constructor(
     @Inject(DB) private readonly db: DbHandle,
+    @Inject(READ_DB) private readonly readDb: DbHandle,
     @Inject(REDIS) private readonly redis: Redis,
   ) {}
 
   async onApplicationShutdown(): Promise<void> {
     this.redis.disconnect();
     await this.db.pool.end();
+    if (this.readDb !== this.db) await this.readDb.pool.end();
   }
 }
 
@@ -44,10 +46,16 @@ export class InfraModule {
       providers: [
         { provide: ENV, useValue: env },
         { provide: DB, useFactory: () => createDb(env.DATABASE_URL, env.DB_POOL_MAX) },
+        {
+          provide: READ_DB,
+          inject: [DB],
+          useFactory: (db: DbHandle) =>
+            env.DATABASE_READ_URL ? createDb(env.DATABASE_READ_URL, env.DB_POOL_MAX) : db,
+        },
         { provide: REDIS, useValue: redis },
         InfraShutdown,
       ],
-      exports: [ENV, DB, REDIS],
+      exports: [ENV, DB, READ_DB, REDIS],
     };
   }
 }

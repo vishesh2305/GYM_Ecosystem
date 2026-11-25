@@ -1,6 +1,8 @@
 // Injection tokens. Every constructor dependency uses @Inject(token) explicitly (see ADR 007).
 export const ENV = Symbol("ENV");
 export const DB = Symbol("DB");
+/** Read-only database for reports: the replica when configured, else the primary. */
+export const READ_DB = Symbol("READ_DB");
 export const REDIS = Symbol("REDIS");
 export const SMS_SENDER = Symbol("SMS_SENDER");
 export const EMAIL_SENDER = Symbol("EMAIL_SENDER");

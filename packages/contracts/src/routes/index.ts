@@ -98,6 +98,7 @@ import {
   removeDevice,
   updateMyNotificationPreferences,
 } from "./notifications";
+import { attendanceReport, duesReport, retentionReport, revenueReport } from "./reports";
 import { health, ready } from "./system";
 import {
   listExercises,
@@ -234,4 +235,8 @@ export const routes = {
   createLeadTask,
   listLeadTasks,
   completeLeadTask,
+  revenueReport,
+  duesReport,
+  attendanceReport,
+  retentionReport,
 };

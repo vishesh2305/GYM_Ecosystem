@@ -41,6 +41,8 @@ export const apiEnvSchema = baseEnvSchema
     BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(1_048_576),
     TRUST_PROXY: z.stringbool().default(false),
     DB_POOL_MAX: z.coerce.number().int().positive().default(10),
+    /** A read replica for owner reports. Unset: reports read the primary database. */
+    DATABASE_READ_URL: z.url({ protocol: /^postgres(ql)?$/ }).optional(),
     OUTBOX_POLL_MS: z.coerce.number().int().positive().default(500),
     OUTBOX_BATCH: z.coerce.number().int().positive().max(1000).default(100),
     EVENT_MAX_ATTEMPTS: z.coerce.number().int().positive().default(8),
