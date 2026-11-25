@@ -51,9 +51,9 @@ Launch assumption: India (INR, GST, UPI, WhatsApp, DPDP Act). Status of each sto
 
 ## Training (A13)
 
-- **TR-1 Exercise library.** Seeded list with muscles, equipment, media reference.
-- **TR-2 Workout log.** Sets with reps, weight (grams), RPE; works offline and syncs.
-- **TR-3 PRs.** Detect weight, reps and estimated 1RM records per exercise.
+- **TR-1 Exercise library.** Seeded list with muscles, equipment, media reference. Done in A13 (ADR 015).
+- **TR-2 Workout log.** Sets with reps, weight, RPE; works offline and syncs. Done in A13 (ADR 015; weight in kg, see "Units").
+- **TR-3 PRs.** Detect weight, reps and estimated 1RM records per exercise. Done in A13 (ADR 015).
 
 ## Notifications (A14)
 
