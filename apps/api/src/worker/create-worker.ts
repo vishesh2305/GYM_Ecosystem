@@ -1,5 +1,6 @@
 import { createDb } from "@gym/db";
 import { Queue, QueueEvents, Worker } from "bullmq";
+import { captureException } from "@sentry/node";
 import { Redis } from "ioredis";
 import { pino } from "pino";
 import type { ApiEnv } from "../env";
@@ -12,6 +13,7 @@ import { runAttendance } from "../scheduling/attendance";
 import { runSessionGeneration } from "../scheduling/timetable";
 import { runMembershipLifecycle } from "../membership/lifecycle";
 import { runMaintenance } from "../platform/maintenance";
+import { observeOutbox, observePool, observeQueues } from "../platform/metrics";
 import { createEmailSender, createSmsSender } from "../auth/senders";
 import { createChannels, type ChannelAdapter } from "../notifications/channels";
 import { runNotificationDelivery } from "../notifications/delivery";
@@ -158,6 +160,14 @@ export async function createWorker(
     },
     { connection, prefix: env.QUEUE_PREFIX, autorun: false },
   );
+  maintenance.on("failed", (job, error) => {
+    logger.error({ err: error, job: job?.name }, "scheduled job failed");
+    captureException(error, { tags: { job: job?.name } });
+  });
+
+  observePool(db.pool, "worker");
+  observeQueues([queue, maintenanceQueue]);
+  observeOutbox(db.db);
 
   if (autostart) {
     relay.start();

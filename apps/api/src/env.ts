@@ -32,6 +32,10 @@ const csv = z
 
 export const apiEnvSchema = baseEnvSchema
   .extend({
+    /** Which deployment this is; staging allows test sign-in numbers, production never does. */
+    DEPLOY_ENV: z.enum(["local", "staging", "production"]).default("local"),
+    /** Error reporting (Sentry). Unset: errors are only logged. Read by instrumentation.ts at start-up. */
+    SENTRY_DSN: z.url().optional(),
     HOST: z.string().default("0.0.0.0"),
     PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
     /** Comma-separated list of allowed browser origins. Empty = no cross-origin access. */

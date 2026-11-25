@@ -4,6 +4,7 @@ import { Worker, type Job } from "bullmq";
 import type { Redis } from "ioredis";
 import type { Logger } from "pino";
 import type { EventEnvelope, EventHandler } from "../platform/events";
+import { captureException } from "@sentry/node";
 
 export const EVENTS_QUEUE = "events";
 
@@ -33,6 +34,9 @@ export class EventDispatcher {
         { err: error, eventId: job?.id, attempt: job?.attemptsMade },
         "event handler failed",
       );
+      // Retries exhausted: the event is in the dead-letter queue and needs a person.
+      if (job && job.attemptsMade >= (job.opts.attempts ?? 1))
+        captureException(error, { tags: { eventType: job.data.type, eventId: job.id } });
     });
   }
 

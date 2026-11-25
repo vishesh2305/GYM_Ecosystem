@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { Redis } from "ioredis";
 import type { ApiEnv } from "./env";
+import { observePool } from "./platform/metrics";
 import { DB, ENV, READ_DB, REDIS } from "./tokens";
 
 export function createRedis(url: string): Redis {
@@ -45,12 +46,23 @@ export class InfraModule {
       module: InfraModule,
       providers: [
         { provide: ENV, useValue: env },
-        { provide: DB, useFactory: () => createDb(env.DATABASE_URL, env.DB_POOL_MAX) },
+        {
+          provide: DB,
+          useFactory: () => {
+            const db = createDb(env.DATABASE_URL, env.DB_POOL_MAX);
+            observePool(db.pool, "primary");
+            return db;
+          },
+        },
         {
           provide: READ_DB,
           inject: [DB],
-          useFactory: (db: DbHandle) =>
-            env.DATABASE_READ_URL ? createDb(env.DATABASE_READ_URL, env.DB_POOL_MAX) : db,
+          useFactory: (db: DbHandle) => {
+            if (!env.DATABASE_READ_URL) return db;
+            const replica = createDb(env.DATABASE_READ_URL, env.DB_POOL_MAX);
+            observePool(replica.pool, "replica");
+            return replica;
+          },
         },
         { provide: REDIS, useValue: redis },
         InfraShutdown,
