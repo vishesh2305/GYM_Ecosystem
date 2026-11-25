@@ -8,3 +8,4 @@ export * from "./ledger";
 export * from "./invoicing";
 export * from "./access";
 export * from "./scheduling";
+export * from "./training";

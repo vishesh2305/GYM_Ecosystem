@@ -80,6 +80,7 @@ import {
   updateClass,
 } from "./scheduling";
 import { health, ready } from "./system";
+import { listExercises } from "./training";
 import {
   acceptInvite,
   inviteStaff,
@@ -143,6 +144,7 @@ export const routes = {
   cancelMyBooking,
   markAttendance,
   bookPersonalTraining,
+  listExercises,
   getMe,
   updateMe,
   listConsents,

@@ -23,7 +23,7 @@ type MemberIn = z.output<typeof routes.updateMember.body>;
 type ListQuery = z.output<typeof routes.listMembers.query>;
 
 const UNIQUE_VIOLATION = "23505";
-const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+export const escapeLike = (s: string) => s.replace(/[\\%_]/g, (c) => `\\${c}`);
 
 export const toMember = (m: typeof members.$inferSelect): MemberOut => ({
   id: m.id,
