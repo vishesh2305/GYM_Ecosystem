@@ -105,7 +105,12 @@ import {
   revenueReport,
   summaryReport,
 } from "./reports";
-import { downloadDataExport, listPrivacyRequests, requestDataExport } from "./privacy";
+import {
+  downloadDataExport,
+  listPrivacyRequests,
+  requestDataExport,
+  requestErasure,
+} from "./privacy";
 import { createEnquiry, getPublicGym, getPublicSchedule } from "./public";
 import { health, ready } from "./system";
 import {
@@ -254,4 +259,5 @@ export const routes = {
   requestDataExport,
   listPrivacyRequests,
   downloadDataExport,
+  requestErasure,
 };

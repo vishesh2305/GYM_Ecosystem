@@ -38,3 +38,16 @@ export const downloadDataExport = defineRoute({
   params: z.object({ requestId: z.uuid() }),
   response: z.record(z.string(), z.unknown()),
 });
+
+export const requestErasure = defineRoute({
+  method: "POST",
+  path: "/v1/me/privacy/erasure",
+  summary:
+    "Delete my account and personal data in every gym. Signs out everywhere at once; erasure follows within " +
+    "minutes. Records the law requires (tax invoices, payments) are kept with my name removed from my member " +
+    "records. A gym's only owner must hand over ownership first",
+  tag: "privacy",
+  body: z.object({ confirm: z.literal("DELETE MY ACCOUNT") }),
+  response: privacyRequest,
+  status: 202,
+});

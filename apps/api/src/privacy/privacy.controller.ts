@@ -1,8 +1,9 @@
 import type { routes } from "@gym/contracts";
-import type { DbHandle } from "@gym/db";
-import { and, desc, eq, gt, inArray } from "@gym/db/orm";
-import { privacyRequests } from "@gym/db/schema";
+import { withTenant, withUser, type DbHandle } from "@gym/db";
+import { and, count, desc, eq, gt, inArray, ne } from "@gym/db/orm";
+import { organisations, privacyRequests, staffMembers } from "@gym/db/schema";
 import {
+  Body,
   ConflictException,
   Controller,
   Get,
@@ -17,6 +18,7 @@ import {
 import type { z } from "zod";
 import { CurrentAuth } from "../auth/auth.guard";
 import type { AuthContext } from "../auth/auth.types";
+import { SessionService } from "../auth/session.service";
 import { contracts } from "../common/contracts";
 import { ZodPipe } from "../common/zod.pipe";
 import { DB } from "../tokens";
@@ -36,7 +38,10 @@ export const toPrivacyRequest = (r: Row): RequestOut => ({
 /** The person's own privacy requests (DPDP Act 2023: right to access); the worker does the work. */
 @Controller("me/privacy")
 export class MyPrivacyController {
-  constructor(@Inject(DB) private readonly db: DbHandle) {}
+  constructor(
+    @Inject(DB) private readonly db: DbHandle,
+    @Inject(SessionService) private readonly sessions: SessionService,
+  ) {}
 
   @Post("exports")
   @HttpCode(202)
@@ -59,6 +64,70 @@ export class MyPrivacyController {
     const [row] = await this.db.db
       .insert(privacyRequests)
       .values({ userId: auth.userId, kind: "export" })
+      .returning();
+    if (!row) throw new Error("privacy request insert returned nothing");
+    return toPrivacyRequest(row);
+  }
+
+  /**
+   * Starts erasure: refuses while the person is the only owner of a gym, then signs them out everywhere and
+   * queues the request for the worker (repeating the request returns the pending one).
+   */
+  @Post("erasure")
+  @HttpCode(202)
+  async requestErasure(
+    @CurrentAuth() auth: AuthContext,
+    @Body(new ZodPipe(contracts.requestErasure.body)) _body: { confirm: string },
+  ): Promise<RequestOut> {
+    const owned = await withUser(this.db.db, auth.userId, (tx) =>
+      tx
+        .select({ tenantId: staffMembers.tenantId })
+        .from(staffMembers)
+        .where(
+          and(
+            eq(staffMembers.userId, auth.userId),
+            eq(staffMembers.role, "owner"),
+            eq(staffMembers.status, "active"),
+          ),
+        ),
+    );
+    for (const { tenantId } of owned) {
+      const others = await withTenant(this.db.db, tenantId, async (tx) => {
+        const [org] = await tx
+          .select({ name: organisations.name, deletedAt: organisations.deletedAt })
+          .from(organisations);
+        const [row] = await tx
+          .select({ n: count() })
+          .from(staffMembers)
+          .where(
+            and(
+              eq(staffMembers.role, "owner"),
+              eq(staffMembers.status, "active"),
+              ne(staffMembers.userId, auth.userId),
+            ),
+          );
+        return { org, owners: row?.n ?? 0 };
+      });
+      if (others.org && !others.org.deletedAt && others.owners === 0)
+        throw new ConflictException(
+          `You are the only owner of ${others.org.name}. Make someone else an owner first.`,
+        );
+    }
+    const [pending] = await this.db.db
+      .select()
+      .from(privacyRequests)
+      .where(
+        and(
+          eq(privacyRequests.userId, auth.userId),
+          eq(privacyRequests.kind, "erasure"),
+          eq(privacyRequests.status, "pending"),
+        ),
+      );
+    await this.sessions.revokeAll(auth.userId, "account_erasure");
+    if (pending) return toPrivacyRequest(pending);
+    const [row] = await this.db.db
+      .insert(privacyRequests)
+      .values({ userId: auth.userId, kind: "erasure" })
       .returning();
     if (!row) throw new Error("privacy request insert returned nothing");
     return toPrivacyRequest(row);

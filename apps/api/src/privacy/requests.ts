@@ -1,6 +1,7 @@
 import { withPrivacy, type Database } from "@gym/db";
 import { and, asc, eq, isNotNull, lt } from "@gym/db/orm";
 import { privacyRequests } from "@gym/db/schema";
+import { erasePerson } from "./erase";
 import { collectPersonalData } from "./export";
 
 /** How long a finished export can be downloaded. */
@@ -8,7 +9,7 @@ export const EXPORT_DAYS = 7;
 const BATCH = 10;
 
 /**
- * Runs pending privacy requests one at a time (claimed with SKIP LOCKED, so two workers never run the same one)
+ * Runs pending privacy requests (exports and erasures) one at a time (claimed with SKIP LOCKED, so two workers never run the same one)
  * and empties exports past their download window. Every step runs as app_privacy (withPrivacy).
  */
 export async function runPrivacyRequests(db: Database, now: Date = new Date()) {
@@ -19,7 +20,7 @@ export async function runPrivacyRequests(db: Database, now: Date = new Date()) {
       .where(and(lt(privacyRequests.expiresAt, now), isNotNull(privacyRequests.result)))
       .returning({ id: privacyRequests.id }),
   );
-  const totals = { exports: 0, failed: 0, expired: expired.length };
+  const totals = { exports: 0, erasures: 0, failed: 0, expired: expired.length };
   for (let i = 0; i < BATCH; i++) {
     const outcome = await withPrivacy(db, async (tx) => {
       const [request] = await tx
@@ -32,6 +33,14 @@ export async function runPrivacyRequests(db: Database, now: Date = new Date()) {
       if (!request) return null;
       try {
         // A savepoint, so a failing query still lets the request be marked failed.
+        if (request.kind === "erasure") {
+          const summary = await tx.transaction((inner) => erasePerson(inner, request.userId, now));
+          await tx
+            .update(privacyRequests)
+            .set({ status: "done", result: summary, completedAt: now })
+            .where(eq(privacyRequests.id, request.id));
+          return "erasures" as const;
+        }
         const result = await tx.transaction((inner) => collectPersonalData(inner, request.userId));
         await tx
           .update(privacyRequests)

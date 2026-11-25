@@ -298,3 +298,97 @@ describe("data export (right to access)", () => {
     );
   });
 });
+
+describe("account erasure (right to erasure)", () => {
+  /** Rows in a table whose text mentions any of these values (as the database owner, across every gym). */
+  async function mentions(table: string, values: string[]) {
+    const result = await dbh.pool.query<{ n: string }>(
+      `select count(*) as n from "${table}" t where t::text ilike any($1)`,
+      [values.map((v) => `%${v}%`)],
+    );
+    return Number(result.rows[0]?.n ?? 0);
+  }
+
+  it("removes or anonymises me in every module, keeping only what the law requires", async () => {
+    const gym = await gymWithMember(api, dbh.db);
+    const workplace = await gymWithMember(api, dbh.db);
+    const me = await personWithEverything(gym, workplace, `Asha${digits()}`);
+    const other = await personWithEverything(gym, workplace, `Bhavna${digits()}`);
+    const mine = [me.phone, me.email, me.name, me.userId];
+    const theirs = [other.phone, other.email, other.name, other.userId];
+    const tables = Object.keys(PERSONAL_DATA);
+    const before = Object.fromEntries(
+      await Promise.all(tables.map(async (t) => [t, await mentions(t, theirs)] as const)),
+    );
+
+    const res = await api.inject({
+      method: "POST",
+      url: "/v1/me/privacy/erasure",
+      headers: me.person.headers,
+      payload: { confirm: "DELETE MY ACCOUNT" },
+    });
+    expect(res.statusCode).toBe(202);
+    // Signed out everywhere straight away.
+    expect(
+      (await api.inject({ method: "GET", url: "/v1/me", headers: me.person.headers })).statusCode,
+    ).toBe(401);
+
+    await runPrivacyRequests(dbh.db);
+    for (const [table, rule] of Object.entries(PERSONAL_DATA) as [string, { erasure: string }][]) {
+      const left = await mentions(table, mine);
+      if (rule.erasure !== "retain")
+        expect(left, `${table} still mentions the erased person`).toBe(0);
+    }
+    // What the law requires stays: the tax invoice, tied to an anonymised member.
+    expect(await mentions("invoices", [me.name])).toBeGreaterThan(0);
+    const [member] = await dbh.pool
+      .query<{ name: string; deleted_at: Date | null; user_id: string | null }>(
+        "select name, deleted_at, user_id from members where id = $1",
+        [me.memberId],
+      )
+      .then((r) => r.rows);
+    expect(member).toMatchObject({
+      name: "Erased member",
+      user_id: null,
+      deleted_at: expect.any(Date),
+    });
+    const [mandate] = await dbh.pool
+      .query<{ status: string }>("select status from autopay_mandates where member_id = $1", [
+        me.memberId,
+      ])
+      .then((r) => r.rows);
+    expect(mandate?.status).toBe("cancelled");
+
+    // Nobody else's data was touched.
+    for (const table of tables) expect(await mentions(table, theirs), table).toBe(before[table]);
+    const list = await api.inject({ method: "GET", url: "/v1/me", headers: other.person.headers });
+    expect(list.statusCode).toBe(200);
+  });
+
+  it("waits until a gym's only owner has handed over ownership", async () => {
+    const g = await gymWithMember(api, dbh.db);
+    const erase = () =>
+      api.inject({
+        method: "POST",
+        url: "/v1/me/privacy/erasure",
+        headers: g.owner.headers,
+        payload: { confirm: "DELETE MY ACCOUNT" },
+      });
+    const refused = await erase();
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().detail).toContain("only owner of Test Gym");
+    await g.staff("owner");
+    expect((await erase()).statusCode).toBe(202);
+  });
+
+  it("needs the exact confirmation", async () => {
+    const someone = await signedInUser(api, dbh.db);
+    const res = await api.inject({
+      method: "POST",
+      url: "/v1/me/privacy/erasure",
+      headers: someone.headers,
+      payload: { confirm: "yes" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});

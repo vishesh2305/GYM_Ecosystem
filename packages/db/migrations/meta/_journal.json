@@ -470,6 +470,13 @@
       "when": 1795616196404,
       "tag": "0066_privacy_role",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1795616486752,
+      "tag": "0067_privacy_erasure_grants",
+      "breakpoints": true
     }
   ]
 }
