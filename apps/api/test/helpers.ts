@@ -1,7 +1,7 @@
 import { parseEnv } from "@gym/config";
 import type { Database } from "@gym/db";
 import { users } from "@gym/db/schema";
-import { generateKeyPairSync, randomBytes } from "node:crypto";
+import { createHmac, generateKeyPairSync, randomBytes } from "node:crypto";
 import { inject } from "vitest";
 import { SessionService } from "../src/auth/session.service";
 import { apiEnvSchema, type ApiEnv } from "../src/env";
@@ -70,7 +70,7 @@ type Injectable = {
     method: string;
     url: string;
     headers?: Record<string, string>;
-    payload?: object;
+    payload?: object | string;
   }): Promise<{
     json(): any; // eslint-disable-line @typescript-eslint/no-explicit-any
     statusCode: number;
@@ -115,4 +115,45 @@ export async function gymWithMember(
         ...(startDate && { startDate }),
       }),
   };
+}
+
+/**
+ * What Razorpay would send for a payment on `order`: the same body shape and the same HMAC-SHA256 signature
+ * over the raw body. `extra` adds fields to the payment entity (for example `token_id`).
+ */
+export function razorpayWebhook(
+  app: Injectable,
+  event: string,
+  order: { orderId: string; amountPaise: number; notes: Record<string, string> },
+  {
+    paymentId = `pay_${Math.random().toString(36).slice(2)}`,
+    secret = "dev-webhook-secret",
+    extra = {},
+  }: { paymentId?: string; secret?: string; extra?: Record<string, unknown> } = {},
+) {
+  const body = JSON.stringify({
+    event,
+    payload: {
+      payment: {
+        entity: {
+          id: paymentId,
+          order_id: order.orderId,
+          amount: order.amountPaise,
+          currency: "INR",
+          method: "upi",
+          notes: order.notes,
+          ...extra,
+        },
+      },
+    },
+  });
+  return app.inject({
+    method: "POST",
+    url: "/v1/webhooks/razorpay",
+    headers: {
+      "content-type": "application/json",
+      "x-razorpay-signature": createHmac("sha256", secret).update(body).digest("hex"),
+    },
+    payload: body,
+  });
 }

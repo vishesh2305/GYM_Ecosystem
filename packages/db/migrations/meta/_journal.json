@@ -253,6 +253,20 @@
       "when": 1795554033466,
       "tag": "0035_refunds_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795590726719,
+      "tag": "0036_autopay_mandates",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1795590727012,
+      "tag": "0037_autopay_mandates_rls",
+      "breakpoints": true
     }
   ]
 }

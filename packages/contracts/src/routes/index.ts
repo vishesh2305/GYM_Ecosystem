@@ -23,6 +23,9 @@ import {
   recordPayment,
   refundPayment,
   startOnlinePayment,
+  startAutopay,
+  getAutopay,
+  cancelAutopay,
 } from "./billing";
 import { listConsents, recordConsent } from "./consents";
 import { getMe, updateMe } from "./me";
@@ -117,6 +120,9 @@ export const routes = {
   recordPayment,
   listInvoicePayments,
   startOnlinePayment,
+  startAutopay,
+  getAutopay,
+  cancelAutopay,
   razorpayWebhook,
   refundPayment,
   getInvoicePdf,

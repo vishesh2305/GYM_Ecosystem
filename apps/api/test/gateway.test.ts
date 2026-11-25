@@ -32,7 +32,8 @@ beforeAll(async () => {
       res.end(JSON.stringify({ error: { description: "bad request" } }));
       return;
     }
-    res.end(JSON.stringify({ id: req.url === "/orders" ? "order_ABC123" : "rfnd_XYZ789" }));
+    const ids: Record<string, string> = { "/orders": "order_ABC123", "/customers": "cust_C1" };
+    res.end(JSON.stringify({ id: ids[req.url ?? ""] ?? "rfnd_XYZ789" }));
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -68,6 +69,65 @@ describe("Razorpay adapter", () => {
     expect(await gateway().refund("pay_1", 5000)).toEqual({ refundId: "rfnd_XYZ789" });
     expect(seen.at(-1)).toMatchObject({ url: "/payments/pay_1/refund", body: { amount: 5000 } });
     await expect(gateway().refund("fail", 1)).rejects.toThrow(/failed with 400/);
+  });
+});
+
+describe("Razorpay UPI AutoPay", () => {
+  const gateway = () => new RazorpayGateway("rzp_test_key", "secret", baseUrl);
+  const payer = { name: "Asha", phone: "+919900000001", email: null };
+
+  it("creates the customer, then a UPI order that asks for a mandate up to the limit", async () => {
+    const before = seen.length;
+    const result = await gateway().createMandateOrder({
+      amountPaise: 236_000,
+      maxAmountPaise: 236_000,
+      receipt: "INV/26-27/000002",
+      notes: { mandateId: "m" },
+      payer,
+    });
+    expect(result).toEqual({ orderId: "order_ABC123", customerId: "cust_C1" });
+    const [customer, order] = seen.slice(before);
+    expect(customer).toMatchObject({
+      url: "/customers",
+      body: { name: "Asha", contact: "+919900000001", fail_existing: "0" },
+    });
+    expect(order).toMatchObject({
+      url: "/orders",
+      body: {
+        amount: 236_000,
+        customer_id: "cust_C1",
+        method: "upi",
+        token: { max_amount: 236_000, frequency: "as_presented" },
+        notes: { mandateId: "m" },
+      },
+    });
+  });
+
+  it("charges a mandate with an order and a recurring payment, and cancels it", async () => {
+    const before = seen.length;
+    expect(
+      await gateway().chargeMandate({
+        customerId: "cust_C1",
+        tokenId: "token_T1",
+        amountPaise: 177_000,
+        receipt: "INV/26-27/000003",
+        notes: { paymentId: "p" },
+        payer,
+      }),
+    ).toEqual({ orderId: "order_ABC123" });
+    expect(seen.slice(before).map((s) => s.url)).toEqual(["/orders", "/payments/create/recurring"]);
+    expect(seen.at(-1)?.body).toMatchObject({
+      order_id: "order_ABC123",
+      customer_id: "cust_C1",
+      token: "token_T1",
+      recurring: "1",
+      amount: 177_000,
+    });
+    await gateway().cancelMandate("cust_C1", "token_T1");
+    expect(seen.at(-1)).toMatchObject({
+      method: "PUT",
+      url: "/customers/cust_C1/tokens/token_T1/cancel",
+    });
   });
 });
 

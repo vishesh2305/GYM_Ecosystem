@@ -99,6 +99,16 @@ export const listInvoicePayments = defineRoute({
   response: z.array(payment),
 });
 
+const checkoutOrder = z.object({
+  paymentId: z.uuid(),
+  gateway: z.enum(["fake", "razorpay"]),
+  keyId: z.string(),
+  orderId: z.string(),
+  amountPaise: z.number().int(),
+  currency: z.literal("INR"),
+  notes: z.record(z.string(), z.string()),
+});
+
 export const startOnlinePayment = defineRoute({
   method: "POST",
   path: "/v1/orgs/{orgId}/invoices/{invoiceId}/pay-online",
@@ -106,16 +116,53 @@ export const startOnlinePayment = defineRoute({
     "Create a payment-gateway order for what is due on an invoice (opened in the app's checkout)",
   tag: "billing",
   params: invoiceParams,
-  response: z.object({
-    paymentId: z.uuid(),
-    gateway: z.enum(["fake", "razorpay"]),
-    keyId: z.string(),
-    orderId: z.string(),
-    amountPaise: z.number().int(),
-    currency: z.literal("INR"),
-    notes: z.record(z.string(), z.string()),
+  response: checkoutOrder,
+  status: 201,
+});
+
+export const autopayMandate = z.object({
+  id: z.uuid(),
+  memberId: z.uuid(),
+  status: z.enum(["pending", "active", "cancelled", "failed"]),
+  maxAmountPaise: z.number().int(),
+  confirmedAt: z.iso.datetime().nullable(),
+  cancelledAt: z.iso.datetime().nullable(),
+  createdAt: z.iso.datetime(),
+});
+
+export const startAutopay = defineRoute({
+  method: "POST",
+  path: "/v1/orgs/{orgId}/invoices/{invoiceId}/pay-autopay",
+  summary:
+    "Pay what is due on an invoice and set up UPI AutoPay for the member's renewals (opened in the app's checkout)",
+  tag: "billing",
+  params: invoiceParams,
+  response: checkoutOrder.extend({
+    mandateId: z.uuid(),
+    customerId: z.string(),
+    maxAmountPaise: z.number().int(),
+    recurring: z.literal(true),
   }),
   status: 201,
+});
+
+export const getAutopay = defineRoute({
+  method: "GET",
+  path: "/v1/orgs/{orgId}/members/{memberId}/autopay",
+  summary: "The member's current UPI AutoPay (404 when they have none)",
+  tag: "billing",
+  params: memberParams,
+  response: autopayMandate,
+});
+
+export const cancelAutopay = defineRoute({
+  method: "DELETE",
+  path: "/v1/orgs/{orgId}/members/{memberId}/autopay",
+  summary: "Turn off the member's UPI AutoPay",
+  tag: "billing",
+  params: memberParams,
+  response: z.undefined(),
+  status: 204,
 });
 
 export const razorpayWebhook = defineRoute({

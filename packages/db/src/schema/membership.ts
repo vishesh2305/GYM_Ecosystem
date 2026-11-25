@@ -127,6 +127,8 @@ export const memberships = pgTable(
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
     cancelReason: text("cancel_reason"),
     createdBy: uuid("created_by"),
+    /** Set when the AutoPay renewal job sold this membership (autopay_mandates.id; no FK to avoid a schema cycle). */
+    renewedByMandateId: uuid("renewed_by_mandate_id"),
     ...timestamps,
   },
   (t) => [

@@ -10,6 +10,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { id } from "../columns";
@@ -200,5 +201,41 @@ export const refunds = pgTable(
   (t) => [
     index("refunds_payment_idx").on(t.tenantId, t.paymentId),
     check("refunds_positive", sql`${t.amountPaise} > 0`),
+  ],
+);
+
+export const MANDATE_STATUSES = ["pending", "active", "cancelled", "failed"] as const;
+
+/**
+ * A member's UPI AutoPay mandate. `pending` until the member approves it in their UPI app (the first payment
+ * is captured with a token), then `active` until cancelled. At most one pending or active mandate per member.
+ */
+export const autopayMandates = pgTable(
+  "autopay_mandates",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => organisations.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id),
+    status: text("status", { enum: MANDATE_STATUSES }).notNull(),
+    /** Largest single charge the member approved. */
+    maxAmountPaise: integer("max_amount_paise").notNull(),
+    gateway: text("gateway").notNull(),
+    gatewayCustomerId: text("gateway_customer_id").notNull(),
+    gatewayOrderId: text("gateway_order_id").notNull(),
+    gatewayTokenId: text("gateway_token_id"),
+    createdBy: uuid("created_by"),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("autopay_mandates_one_live_per_member")
+      .on(t.tenantId, t.memberId)
+      .where(sql`${t.status} in ('pending', 'active')`),
+    check("autopay_mandates_max_positive", sql`${t.maxAmountPaise} > 0`),
   ],
 );

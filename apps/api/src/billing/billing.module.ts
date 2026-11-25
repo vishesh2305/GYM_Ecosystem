@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import type { ApiEnv } from "../env";
 import { MembershipModule } from "../membership/membership.module";
 import { ENV, PAYMENT_GATEWAY } from "../tokens";
+import { AutopayController, AutopayService } from "./autopay";
 import { FakeGateway, RazorpayGateway } from "./gateway";
 import { InvoicesController } from "./invoices.controller";
 import { OnlinePaymentsService } from "./online-payments.service";
@@ -21,11 +22,13 @@ import { RefundsController, RefundsService } from "./refunds";
     StartOnlinePaymentController,
     RazorpayWebhookController,
     RefundsController,
+    AutopayController,
   ],
   providers: [
     PaymentsService,
     OnlinePaymentsService,
     RefundsService,
+    AutopayService,
     {
       provide: PAYMENT_GATEWAY,
       inject: [ENV],

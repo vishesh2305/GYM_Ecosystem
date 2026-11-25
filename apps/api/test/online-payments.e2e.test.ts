@@ -1,11 +1,10 @@
 import { createDb, withTenant, type DbHandle } from "@gym/db";
 import { and, eq } from "@gym/db/orm";
 import { ledgerEntries, payments } from "@gym/db/schema";
-import { createHmac } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import { createWorker, type WorkerHandle } from "../src/worker/create-worker";
-import { gymWithMember, testEnv } from "./helpers";
+import { gymWithMember, razorpayWebhook, testEnv } from "./helpers";
 
 const WEBHOOK_SECRET = "test-webhook-secret";
 let api: Awaited<ReturnType<typeof createApp>>["app"];
@@ -38,38 +37,12 @@ async function invoiceReadyToPayOnline() {
   return { g, invoice, order, orgId: g.base.split("/").at(-1) ?? "" };
 }
 
-/** What Razorpay would send: same body shape and the same HMAC-SHA256 signature over the raw body. */
-function webhook(
+const webhook = (
   event: string,
   order: { orderId: string; amountPaise: number; notes: Record<string, string> },
-  paymentId = `pay_${Math.random().toString(36).slice(2)}`,
+  paymentId?: string,
   secret = WEBHOOK_SECRET,
-) {
-  const body = JSON.stringify({
-    event,
-    payload: {
-      payment: {
-        entity: {
-          id: paymentId,
-          order_id: order.orderId,
-          amount: order.amountPaise,
-          currency: "INR",
-          method: "upi",
-          notes: order.notes,
-        },
-      },
-    },
-  });
-  return api.inject({
-    method: "POST",
-    url: "/v1/webhooks/razorpay",
-    headers: {
-      "content-type": "application/json",
-      "x-razorpay-signature": createHmac("sha256", secret).update(body).digest("hex"),
-    },
-    payload: body,
-  });
-}
+) => razorpayWebhook(api, event, order, { ...(paymentId && { paymentId }), secret });
 
 describe("paying an invoice online", () => {
   it("creates a gateway order for exactly what is due", async () => {

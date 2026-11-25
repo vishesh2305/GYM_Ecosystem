@@ -8,6 +8,7 @@ import type { ApiEnv } from "../env";
 import { recordAudit } from "../platform/audit";
 import type { TenantContext } from "../tenancy/tenant.guard";
 import { DB, ENV, PAYMENT_GATEWAY } from "../tokens";
+import { settleMandate } from "./autopay";
 import { verifyWebhookSignature, type PaymentGateway } from "./gateway";
 import { applyCapturedPayment, lockPayableInvoice, PaymentsService } from "./payments.service";
 
@@ -20,6 +21,7 @@ const webhookBody = z.object({
           entity: z.object({
             id: z.string(),
             order_id: z.string().nullable().optional(),
+            token_id: z.string().nullable().optional(),
             amount: z.number().int(),
             notes: z.record(z.string(), z.unknown()).optional(),
           }),
@@ -107,6 +109,14 @@ export class OnlinePaymentsService {
         .where(and(eq(payments.id, paymentId), eq(payments.gatewayOrderId, entity.order_id ?? "")))
         .for("update");
       if (!payment || payment.status === "captured") return;
+      const mandateId = String(entity.notes?.mandateId ?? "");
+      if (validate(mandateId))
+        await settleMandate(
+          tx,
+          mandateId,
+          payment.gatewayOrderId ?? "",
+          event === "payment.captured" ? (entity.token_id ?? null) : null,
+        );
 
       if (event === "payment.failed") {
         await tx

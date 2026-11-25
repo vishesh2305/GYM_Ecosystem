@@ -1,9 +1,8 @@
 import { createDb, type DbHandle } from "@gym/db";
-import { createHmac } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import { createWorker, type WorkerHandle } from "../src/worker/create-worker";
-import { gymWithMember, testEnv } from "./helpers";
+import { gymWithMember, razorpayWebhook, testEnv } from "./helpers";
 
 let api: Awaited<ReturnType<typeof createApp>>["app"];
 let dbh: DbHandle;
@@ -97,30 +96,7 @@ describe("refunds", () => {
       });
     expect((await refundOf(order.paymentId)).statusCode).toBe(400); // still pending
 
-    const body = JSON.stringify({
-      event: "payment.captured",
-      payload: {
-        payment: {
-          entity: {
-            id: "pay_refundable",
-            order_id: order.orderId,
-            amount: order.amountPaise,
-            notes: order.notes,
-          },
-        },
-      },
-    });
-    await api.inject({
-      method: "POST",
-      url: "/v1/webhooks/razorpay",
-      headers: {
-        "content-type": "application/json",
-        "x-razorpay-signature": createHmac("sha256", "dev-webhook-secret")
-          .update(body)
-          .digest("hex"),
-      },
-      payload: body,
-    });
+    await razorpayWebhook(api, "payment.captured", order, { paymentId: "pay_refundable" });
     const res = await refundOf(order.paymentId);
     expect(res.statusCode).toBe(201);
     expect(res.json().gatewayRefundId).toMatch(/^rfnd_fake_/);

@@ -12,7 +12,37 @@ export interface PaymentGateway {
     notes: Record<string, string>;
   }): Promise<{ orderId: string }>;
   refund(paymentId: string, amountPaise: number): Promise<{ refundId: string }>;
+  /** First payment that also asks the member to approve UPI AutoPay up to `maxAmountPaise` per charge. */
+  createMandateOrder(order: MandateOrder): Promise<{ orderId: string; customerId: string }>;
+  /** Charge an approved mandate. The result arrives later by webhook, like any online payment. */
+  chargeMandate(charge: MandateCharge): Promise<{ orderId: string }>;
+  cancelMandate(customerId: string, tokenId: string): Promise<void>;
 }
+
+export interface Payer {
+  name: string;
+  phone: string | null;
+  email: string | null;
+}
+
+export interface MandateOrder {
+  amountPaise: number;
+  maxAmountPaise: number;
+  receipt: string;
+  notes: Record<string, string>;
+  payer: Payer;
+}
+
+export interface MandateCharge {
+  customerId: string;
+  tokenId: string;
+  amountPaise: number;
+  receipt: string;
+  notes: Record<string, string>;
+  payer: Payer;
+}
+
+const fakeId = (prefix: string) => `${prefix}_fake_${v7().replaceAll("-", "")}`;
 
 /** Razorpay signs webhooks with HMAC-SHA256 of the raw body using the webhook secret (hex). */
 export function verifyWebhookSignature(
@@ -31,14 +61,27 @@ export class FakeGateway implements PaymentGateway {
   readonly name = "fake" as const;
   readonly keyId = "rzp_test_fake";
   async createOrder(): Promise<{ orderId: string }> {
-    return { orderId: `order_fake_${v7().replaceAll("-", "")}` };
+    return { orderId: fakeId("order") };
   }
   async refund(): Promise<{ refundId: string }> {
-    return { refundId: `rfnd_fake_${v7().replaceAll("-", "")}` };
+    return { refundId: fakeId("rfnd") };
   }
+  async createMandateOrder(): Promise<{ orderId: string; customerId: string }> {
+    return { orderId: fakeId("order"), customerId: fakeId("cust") };
+  }
+  async chargeMandate(): Promise<{ orderId: string }> {
+    return { orderId: fakeId("order") };
+  }
+  async cancelMandate(): Promise<void> {}
 }
 
-/** Razorpay REST API (orders, refunds). Not exercised by automated tests: needs real keys. */
+/** UPI AutoPay mandates are approved for this long. */
+const MANDATE_YEARS = 5;
+
+/**
+ * Razorpay REST API (orders, refunds, UPI AutoPay). Tested against a local stand-in only: check every call with
+ * test keys before going live.
+ */
 export class RazorpayGateway implements PaymentGateway {
   readonly name = "razorpay" as const;
   private readonly auth: string;
@@ -56,7 +99,7 @@ export class RazorpayGateway implements PaymentGateway {
     receipt: string;
     notes: Record<string, string>;
   }) {
-    const body = await this.post("/orders", {
+    const body = await this.send("/orders", {
       amount: order.amountPaise,
       currency: "INR",
       receipt: order.receipt,
@@ -66,15 +109,72 @@ export class RazorpayGateway implements PaymentGateway {
   }
 
   async refund(paymentId: string, amountPaise: number) {
-    const body = await this.post(`/payments/${encodeURIComponent(paymentId)}/refund`, {
+    const body = await this.send(`/payments/${encodeURIComponent(paymentId)}/refund`, {
       amount: amountPaise,
     });
     return { refundId: String(body.id) };
   }
 
-  private async post(path: string, payload: object): Promise<Record<string, unknown>> {
+  async createMandateOrder(order: MandateOrder) {
+    const customer = await this.send("/customers", {
+      name: order.payer.name,
+      contact: order.payer.phone ?? undefined,
+      email: order.payer.email ?? undefined,
+      fail_existing: "0", // returns the existing customer for the same contact
+    });
+    const customerId = String(customer.id);
+    const expireAt = Math.floor(Date.now() / 1000) + MANDATE_YEARS * 365 * 86_400;
+    const body = await this.send("/orders", {
+      amount: order.amountPaise,
+      currency: "INR",
+      customer_id: customerId,
+      method: "upi",
+      token: { max_amount: order.maxAmountPaise, expire_at: expireAt, frequency: "as_presented" },
+      receipt: order.receipt,
+      notes: order.notes,
+    });
+    return { orderId: String(body.id), customerId };
+  }
+
+  async chargeMandate(charge: MandateCharge) {
+    const order = await this.send("/orders", {
+      amount: charge.amountPaise,
+      currency: "INR",
+      payment_capture: true,
+      receipt: charge.receipt,
+      notes: charge.notes,
+    });
+    const orderId = String(order.id);
+    await this.send("/payments/create/recurring", {
+      email: charge.payer.email ?? undefined,
+      contact: charge.payer.phone ?? undefined,
+      amount: charge.amountPaise,
+      currency: "INR",
+      order_id: orderId,
+      customer_id: charge.customerId,
+      token: charge.tokenId,
+      recurring: "1",
+      description: charge.receipt,
+      notes: charge.notes,
+    });
+    return { orderId };
+  }
+
+  async cancelMandate(customerId: string, tokenId: string) {
+    await this.send(
+      `/customers/${encodeURIComponent(customerId)}/tokens/${encodeURIComponent(tokenId)}/cancel`,
+      {},
+      "PUT",
+    );
+  }
+
+  private async send(
+    path: string,
+    payload: object,
+    method: "POST" | "PUT" = "POST",
+  ): Promise<Record<string, unknown>> {
     const res = await fetch(`${this.baseUrl}${path}`, {
-      method: "POST",
+      method,
       headers: { authorization: this.auth, "content-type": "application/json" },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(10_000),
